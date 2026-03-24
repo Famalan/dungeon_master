@@ -1,0 +1,81 @@
+# Unity generated
+Library/
+Temp/
+Logs/
+UserSettings/
+obj/
+Build/
+Builds/
+
+# IDE / OS
+.DS_Store
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.user
+
+# Meta files
+*.meta
+
+# Binary / asset files
+*.asset
+*.unity
+*.prefab
+*.mat
+*.lighting
+*.physicMaterial
+*.controller
+*.anim
+*.overrideController
+*.mask
+*.mesh
+*.flare
+*.fontsettings
+*.guiskin
+*.preset
+*.shadervariants
+*.terrainlayer
+*.mixer
+*.signal
+*.playable
+*.renderTexture
+
+# Textures / media
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tga
+*.psd
+*.tif
+*.tiff
+*.exr
+*.hdr
+*.mp3
+*.wav
+*.ogg
+*.fbx
+*.obj
+*.blend
+*.3ds
+*.dae
+*.ttf
+*.otf
+
+# Settings (not code)
+Assets/Settings/
+ProjectSettings/
+Packages/
+
+# Tutorial boilerplate
+Assets/TutorialInfo/
+Assets/Readme.asset
+
+# Input Actions (large JSON, auto-managed in Unity)
+*.inputactions
+
+# Other tools
+.bezisidekick/
