@@ -16,9 +16,20 @@ public class AudioManager : MonoBehaviour
     [SerializeField] private AudioClip menuMusic;
     [SerializeField] private AudioClip dungeonMusic;
 
+    [Header("Atmosphere SFX")]
+    [SerializeField] private AudioClip ambientLoop;
+    [SerializeField] private AudioClip[] ambientStingerClips;
+    [SerializeField] private AudioClip[] footstepClips;
+    [SerializeField] private AudioClip[] coinPickupClips;
+    [SerializeField] private AudioClip[] damageTakenClips;
+    [SerializeField] private AudioClip[] uiClickClips;
+
     AudioSource musicSource;
+    AudioSource ambientSource;
     AudioSource[] sfxPool;
     int sfxPoolIndex;
+    float ambientStingerTimer;
+    bool ambientStingersEnabled;
 
     Coroutine musicFadeCoroutine;
 
@@ -32,6 +43,7 @@ public class AudioManager : MonoBehaviour
         Instance = this;
 
         SetupMusicSource();
+        SetupAmbientSource();
         SetupSFXPool();
     }
 
@@ -45,6 +57,11 @@ public class AudioManager : MonoBehaviour
         GameEvents.OnGameStateChanged -= HandleGameStateChanged;
     }
 
+    void Update()
+    {
+        UpdateAmbientStingers();
+    }
+
     void HandleGameStateChanged(GameState newState)
     {
         switch (newState)
@@ -54,11 +71,32 @@ public class AudioManager : MonoBehaviour
                 break;
             case GameState.Playing:
                 PlayMusic(dungeonMusic);
+                PlayAmbient();
+                ambientStingersEnabled = true;
+                ambientStingerTimer = Random.Range(4f, 8f);
                 break;
             case GameState.GameOver:
                 StopMusic(2f);
+                StopAmbient();
+                ambientStingersEnabled = false;
+                break;
+            default:
+                StopAmbient();
+                ambientStingersEnabled = false;
                 break;
         }
+    }
+
+    void UpdateAmbientStingers()
+    {
+        if (!ambientStingersEnabled) return;
+        if (ambientStingerClips == null || ambientStingerClips.Length == 0) return;
+
+        ambientStingerTimer -= Time.deltaTime;
+        if (ambientStingerTimer > 0f) return;
+
+        PlayRandomSFX(ambientStingerClips, 0.18f, 0.82f, 1.08f);
+        ambientStingerTimer = Random.Range(5f, 11f);
     }
 
     void SetupMusicSource()
@@ -70,6 +108,17 @@ public class AudioManager : MonoBehaviour
         musicSource.spatialBlend = 0f;
         musicSource.volume = masterMusicVolume;
         musicSource.playOnAwake = false;
+    }
+
+    void SetupAmbientSource()
+    {
+        GameObject ambientGO = new GameObject("AmbientSource");
+        ambientGO.transform.SetParent(transform);
+        ambientSource = ambientGO.AddComponent<AudioSource>();
+        ambientSource.loop = true;
+        ambientSource.spatialBlend = 0f;
+        ambientSource.volume = masterMusicVolume * 0.55f;
+        ambientSource.playOnAwake = false;
     }
 
     void SetupSFXPool()
@@ -93,6 +142,21 @@ public class AudioManager : MonoBehaviour
         AudioSource source = GetPooledSource();
         source.clip = clip;
         source.volume = volume * masterSFXVolume;
+        source.pitch = 1f;
+        source.Play();
+    }
+
+    public void PlayRandomSFX(AudioClip[] clips, float volume = 1f, float minPitch = 0.96f, float maxPitch = 1.04f)
+    {
+        if (clips == null || clips.Length == 0) return;
+
+        AudioClip clip = clips[Random.Range(0, clips.Length)];
+        if (clip == null) return;
+
+        AudioSource source = GetPooledSource();
+        source.clip = clip;
+        source.volume = volume * masterSFXVolume;
+        source.pitch = Random.Range(minPitch, maxPitch);
         source.Play();
     }
 
@@ -101,6 +165,26 @@ public class AudioManager : MonoBehaviour
     {
         if (clip == null) return;
         AudioSource.PlayClipAtPoint(clip, position, volume * masterSFXVolume);
+    }
+
+    public void PlayFootstep()
+    {
+        PlayRandomSFX(footstepClips, 0.32f, 0.92f, 1.08f);
+    }
+
+    public void PlayCoinPickup()
+    {
+        PlayRandomSFX(coinPickupClips, 0.55f, 0.95f, 1.12f);
+    }
+
+    public void PlayDamageTaken()
+    {
+        PlayRandomSFX(damageTakenClips, 0.72f, 0.92f, 1.02f);
+    }
+
+    public void PlayUIClick()
+    {
+        PlayRandomSFX(uiClickClips, 0.38f, 0.98f, 1.04f);
     }
 
     /// <summary>
@@ -144,6 +228,24 @@ public class AudioManager : MonoBehaviour
         }
 
         musicFadeCoroutine = StartCoroutine(CrossFade(clip, fadeTime));
+    }
+
+    void PlayAmbient()
+    {
+        if (ambientLoop == null || ambientSource == null) return;
+        if (ambientSource.clip == ambientLoop && ambientSource.isPlaying) return;
+
+        ambientSource.clip = ambientLoop;
+        ambientSource.volume = masterMusicVolume * 0.55f;
+        ambientSource.Play();
+    }
+
+    void StopAmbient()
+    {
+        if (ambientSource != null)
+        {
+            ambientSource.Stop();
+        }
     }
 
     /// <summary>Stops the current music track with a fade-out over fadeTime seconds.</summary>

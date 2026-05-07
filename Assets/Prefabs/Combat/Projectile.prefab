@@ -294,8 +294,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HitEffectSpawner
   hitVFXPrefab: {fileID: 2886449987732862817, guid: c1103e6dcf002439db621932590ccd45, type: 3}
-  hitSFX: {fileID: 8300000, guid: 30d2034251e81414e8c7b6c09a19d458, type: 3}
-  hitEnemySFX: {fileID: 8300000, guid: bc12e8d7ea94841248b0d1037de1462d, type: 3}
+  hitSFX: {fileID: 8300000, guid: 4278ae779280646639e616b2c5d5183d, type: 3}
+  hitEnemySFX: {fileID: 8300000, guid: 6727db35b02b84262ae5de151c19e734, type: 3}
 --- !u!1 &5787504647050284249
 GameObject:
   m_ObjectHideFlags: 0

@@ -16,6 +16,7 @@ public class RoomData
     public int Height;
     public RoomType Type;
     public int DistanceFromStart;
+    public int GraphStepsFromStart = int.MaxValue;
     public List<int> ConnectedRoomIndexes = new List<int>();
 
     public Vector2Int Center

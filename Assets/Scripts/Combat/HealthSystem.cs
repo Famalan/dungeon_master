@@ -12,6 +12,9 @@ public class HealthSystem : MonoBehaviour
     public UnityEvent<int, int> onHealthChanged; // currentHP, maxHP
     public UnityEvent onDamageTaken;
 
+    [Header("Audio")]
+    public bool playDamageSFX = true;
+
     bool isDead;
     PlayerController playerController;
 
@@ -37,6 +40,11 @@ public class HealthSystem : MonoBehaviour
         currentHealth = Mathf.Max(currentHealth, 0);
         onHealthChanged.Invoke(currentHealth, maxHealth);
         onDamageTaken.Invoke();
+
+        if (playDamageSFX && AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayDamageTaken();
+        }
 
         if (CombatTextManager.Instance != null)
         {

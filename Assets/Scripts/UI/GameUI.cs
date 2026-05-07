@@ -19,6 +19,14 @@ public class GameUI : MonoBehaviour
     public Text weaponModeText;
     public Text sealNotificationText;
     public Image lowHPVignette;
+    public Image damageFlashImage;
+    public Text hintText;
+
+    [Header("UI Asset Theme")]
+    public Font uiFont;
+    public Sprite panelSprite;
+    public Sprite buttonSprite;
+    public Sprite compassArrowSprite;
 
     [Header("Game Over Elements")]
     public Text gameOverLevelText;
@@ -34,16 +42,23 @@ public class GameUI : MonoBehaviour
     public Text perkShopCoinsText;
     public Button[] perkButtons;
     public Text[] perkButtonTexts;
+    public Text[] perkButtonIconTexts;
 
     [Header("References")]
     public PerkSystem perkSystem;
+    public ArtifactSystem artifactSystem;
     public PlayerController playerRef;
     public HealthSystem playerHealthRef;
     public PlayerStats playerStatsRef;
 
     PerkData[] currentPerks;
+    ArtifactData[] currentArtifacts;
     float sealNotificationTimer;
+    float damageFlashTimer;
+    float hintTimer;
     int lastKnownLevel;
+    int lastHealth = -1;
+    Image hintBackplateImage;
 
     void OnEnable()
     {
@@ -65,13 +80,16 @@ public class GameUI : MonoBehaviour
 
     void Start()
     {
+        ResolveRuntimeReferences();
         WireButtons();
         SetupSliders();
+        EnsureRuntimeHudElements();
         ApplyVisualTheme();
 
         if (playerHealthRef != null)
         {
             playerHealthRef.onHealthChanged.AddListener(UpdateHealth);
+            lastHealth = playerHealthRef.currentHealth;
         }
     }
 
@@ -89,6 +107,31 @@ public class GameUI : MonoBehaviour
         UpdateWeaponModeHud();
         UpdateSealNotification();
         UpdateLowHPVignette();
+        UpdateDamageFlash();
+        UpdateHint();
+    }
+
+    void ResolveRuntimeReferences()
+    {
+        if (artifactSystem == null)
+        {
+            artifactSystem = Object.FindAnyObjectByType<ArtifactSystem>();
+        }
+
+        if (artifactSystem == null && perkSystem != null)
+        {
+            artifactSystem = perkSystem.gameObject.AddComponent<ArtifactSystem>();
+        }
+
+        if (playerStatsRef == null)
+        {
+            playerStatsRef = Object.FindAnyObjectByType<PlayerStats>();
+        }
+
+        if (playerHealthRef == null)
+        {
+            playerHealthRef = Object.FindAnyObjectByType<HealthSystem>();
+        }
     }
 
     void HandleWeaponModeChanged()
@@ -99,13 +142,20 @@ public class GameUI : MonoBehaviour
     void UpdateWeaponModeHud()
     {
         if (weaponModeText == null) return;
-        if (playerRef == null || playerRef.shooter == null) return;
+        if (playerRef == null) return;
         if (GameManager.Instance == null || GameManager.Instance.CurrentState != GameState.Playing)
         {
             return;
         }
 
-        weaponModeText.text = playerRef.shooter.GetWeaponHudLine();
+        if (playerRef.meleeWeapon != null)
+        {
+            weaponModeText.text = playerRef.meleeWeapon.GetWeaponHudLine();
+        }
+        else if (playerRef.shooter != null)
+        {
+            weaponModeText.text = playerRef.shooter.GetWeaponHudLine();
+        }
     }
 
     void HandleGameStateChanged(GameState newState)
@@ -148,14 +198,14 @@ public class GameUI : MonoBehaviour
         if (playerRef.dashCooldownTimer > 0f)
         {
             dashCooldownText.gameObject.SetActive(true);
-            dashCooldownText.text = "DASH: " + playerRef.dashCooldownTimer.ToString("F1") + "s";
-            dashCooldownText.color = Color.gray;
+            dashCooldownText.text = "DASH  " + playerRef.dashCooldownTimer.ToString("F1") + "s";
+            dashCooldownText.color = new Color(0.58f, 0.56f, 0.64f, 1f);
         }
         else
         {
             dashCooldownText.gameObject.SetActive(true);
-            dashCooldownText.text = "DASH: READY [Q]";
-            dashCooldownText.color = Color.cyan;
+            dashCooldownText.text = "DASH  READY  [Q]";
+            dashCooldownText.color = new Color(0.38f, 0.96f, 0.82f, 1f);
         }
     }
 
@@ -194,6 +244,70 @@ public class GameUI : MonoBehaviour
         else
         {
             lowHPVignette.gameObject.SetActive(false);
+        }
+    }
+
+    void UpdateDamageFlash()
+    {
+        if (damageFlashImage == null) return;
+
+        if (damageFlashTimer > 0f)
+        {
+            damageFlashTimer -= Time.deltaTime;
+            float alpha = Mathf.Clamp01(damageFlashTimer / 0.35f) * 0.42f;
+            damageFlashImage.gameObject.SetActive(true);
+            damageFlashImage.color = new Color(0.95f, 0.05f, 0.04f, alpha);
+        }
+        else
+        {
+            damageFlashImage.gameObject.SetActive(false);
+        }
+    }
+
+    void TriggerDamageFlash()
+    {
+        damageFlashTimer = 0.35f;
+    }
+
+    void ShowHint(string message, float duration)
+    {
+        if (hintText == null) return;
+
+        hintText.text = message;
+        hintText.gameObject.SetActive(true);
+        hintText.color = new Color(0.95f, 0.9f, 0.74f, 1f);
+        if (hintBackplateImage != null)
+        {
+            hintBackplateImage.gameObject.SetActive(true);
+            hintBackplateImage.color = new Color(0.055f, 0.045f, 0.065f, 0.68f);
+        }
+        hintTimer = duration;
+    }
+
+    void UpdateHint()
+    {
+        if (hintText == null) return;
+
+        if (hintTimer > 0f)
+        {
+            hintTimer -= Time.deltaTime;
+            Color c = hintText.color;
+            c.a = Mathf.Clamp01(hintTimer);
+            hintText.color = c;
+            if (hintBackplateImage != null)
+            {
+                Color bg = hintBackplateImage.color;
+                bg.a = Mathf.Clamp01(hintTimer) * 0.68f;
+                hintBackplateImage.color = bg;
+            }
+        }
+        else
+        {
+            hintText.gameObject.SetActive(false);
+            if (hintBackplateImage != null)
+            {
+                hintBackplateImage.gameObject.SetActive(false);
+            }
         }
     }
 
@@ -317,7 +431,14 @@ public class GameUI : MonoBehaviour
         if (btn == null) return;
 
         btn.onClick.RemoveAllListeners();
-        btn.onClick.AddListener(action);
+        btn.onClick.AddListener(() =>
+        {
+            if (AudioManager.Instance != null)
+            {
+                AudioManager.Instance.PlayUIClick();
+            }
+            action();
+        });
     }
 
     public void ShowMainMenu()
@@ -342,6 +463,11 @@ public class GameUI : MonoBehaviour
         }
 
         UpdateWeaponModeHud();
+
+        if (level == 1)
+        {
+            ShowHint("WASD - движение  |  ЛКМ - атака  |  Q - рывок  |  стрелка ведет к выходу", 7f);
+        }
     }
 
     public void ShowGameOver(int reachedLevel)
@@ -362,16 +488,22 @@ public class GameUI : MonoBehaviour
 
         if (perkTitleText != null)
         {
-            perkTitleText.text = "LEVEL " + level + " - CHOOSE A PERK";
+            perkTitleText.text = "LEVEL " + level + " - CHOOSE AN ARTIFACT";
         }
 
-        if (perkSystem != null)
+        if (artifactSystem != null)
+        {
+            currentArtifacts = artifactSystem.GetChoices(3);
+            SetupArtifactButtons();
+        }
+        else if (perkSystem != null)
         {
             currentPerks = perkSystem.GetRandomPerks(3);
             SetupPerkButtons();
         }
 
         RefreshPerkShopUI();
+        ShowHint("Matching artifact tags unlock 2/4 and 4/4 synergies.", 6f);
     }
 
     void SetupPerkButtons()
@@ -397,9 +529,105 @@ public class GameUI : MonoBehaviour
         }
     }
 
+    void SetupArtifactButtons()
+    {
+        if (currentArtifacts == null) return;
+
+        for (int i = 0; i < 3; i++)
+        {
+            if (perkButtons != null && i < perkButtons.Length && perkButtons[i] != null)
+            {
+                perkButtons[i].onClick.RemoveAllListeners();
+                int artifactIndex = i;
+                perkButtons[i].onClick.AddListener(() => OnArtifactClicked(artifactIndex));
+
+                Image img = perkButtons[i].GetComponent<Image>();
+                if (img != null && i < currentArtifacts.Length && currentArtifacts[i] != null)
+                {
+                    img.color = Color.Lerp(new Color(0.13f, 0.08f, 0.14f, 1f), currentArtifacts[i].color, 0.58f);
+
+                    Transform strip = perkButtons[i].transform.Find("ArtifactAccentStrip");
+                    if (strip == null)
+                    {
+                        GameObject stripObj = new GameObject("ArtifactAccentStrip");
+                        stripObj.transform.SetParent(perkButtons[i].transform, false);
+                        RectTransform stripRt = stripObj.AddComponent<RectTransform>();
+                        stripRt.anchorMin = new Vector2(0f, 0f);
+                        stripRt.anchorMax = new Vector2(0f, 1f);
+                        stripRt.pivot = new Vector2(0f, 0.5f);
+                        stripRt.anchoredPosition = Vector2.zero;
+                        stripRt.sizeDelta = new Vector2(8f, 0f);
+                        strip = stripObj.transform;
+                    }
+
+                    Image stripImage = strip.GetComponent<Image>();
+                    if (stripImage == null)
+                    {
+                        stripImage = strip.gameObject.AddComponent<Image>();
+                    }
+                    stripImage.color = Color.Lerp(currentArtifacts[i].color, Color.white, 0.18f);
+                    stripImage.raycastTarget = false;
+
+                    Text iconText = GetOrCreateArtifactIconText(perkButtons[i].transform);
+                    if (perkButtonIconTexts != null && i < perkButtonIconTexts.Length)
+                    {
+                        perkButtonIconTexts[i] = iconText;
+                    }
+
+                    iconText.text = currentArtifacts[i].iconGlyph;
+                    iconText.color = Color.Lerp(currentArtifacts[i].color, Color.white, 0.35f);
+                }
+            }
+
+            if (perkButtonTexts != null && i < perkButtonTexts.Length && perkButtonTexts[i] != null)
+            {
+                if (i < currentArtifacts.Length && currentArtifacts[i] != null)
+                {
+                    ArtifactData artifact = currentArtifacts[i];
+                    perkButtonTexts[i].text =
+                        artifact.displayName + "\n" +
+                        artifact.rarity + " | " + artifact.tag + " synergy\n" +
+                        artifact.description;
+                    perkButtonTexts[i].color = Color.Lerp(Color.white, artifact.color, 0.24f);
+                }
+            }
+        }
+    }
+
+    Text GetOrCreateArtifactIconText(Transform buttonRoot)
+    {
+        Transform existing = buttonRoot.Find("ArtifactIcon");
+        if (existing != null)
+        {
+            Text text = existing.GetComponent<Text>();
+            if (text != null) return text;
+        }
+
+        GameObject iconObj = new GameObject("ArtifactIcon");
+        iconObj.transform.SetParent(buttonRoot, false);
+        RectTransform rt = iconObj.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = new Vector2(30f, -28f);
+        rt.sizeDelta = new Vector2(38f, 38f);
+
+        Text icon = iconObj.AddComponent<Text>();
+        icon.alignment = TextAnchor.MiddleCenter;
+        icon.fontSize = 28;
+        icon.fontStyle = FontStyle.Bold;
+        icon.raycastTarget = false;
+        return icon;
+    }
+
     void OnPerkClicked(int index)
     {
         if (currentPerks == null || index >= currentPerks.Length) return;
+
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayUIClick();
+        }
 
         PerkData chosen = currentPerks[index];
         if (perkSystem != null && playerStatsRef != null)
@@ -410,8 +638,32 @@ public class GameUI : MonoBehaviour
         GameEvents.FireRequestPerkChosen();
     }
 
+    void OnArtifactClicked(int index)
+    {
+        if (currentArtifacts == null || index >= currentArtifacts.Length) return;
+
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayUIClick();
+        }
+
+        ArtifactData chosen = currentArtifacts[index];
+        if (artifactSystem != null && playerStatsRef != null)
+        {
+            artifactSystem.ApplyArtifact(chosen, playerStatsRef);
+        }
+
+        GameEvents.FireRequestPerkChosen();
+    }
+
     public void UpdateHealth(int current, int max)
     {
+        if (lastHealth >= 0 && current < lastHealth)
+        {
+            TriggerDamageFlash();
+        }
+        lastHealth = current;
+
         if (healthBar != null)
         {
             healthBar.maxValue = max;
@@ -443,12 +695,34 @@ public class GameUI : MonoBehaviour
             perkShopCoinsText.text = "Монеты: ◆ " + playerStatsRef.coins.ToString();
         }
 
-        bool canReroll = playerStatsRef != null && playerStatsRef.coins >= 8;
+        int rerollCost = GetArtifactRerollCost();
+        bool canReroll = playerStatsRef != null && playerStatsRef.coins >= rerollCost;
         bool canHeal = playerStatsRef != null && playerStatsRef.coins >= 5 &&
             playerHealthRef != null && playerHealthRef.currentHealth < playerHealthRef.maxHealth;
 
+        UpdateShopButtonLabel("RerollPerksButton", "Reroll artifacts (" + rerollCost + " ◆)");
         SetPerkShopButtonInteractable("RerollPerksButton", canReroll);
         SetPerkShopButtonInteractable("BuyHealButton", canHeal);
+    }
+
+    int GetArtifactRerollCost()
+    {
+        int discount = playerStatsRef != null ? playerStatsRef.artifactRerollDiscount : 0;
+        return Mathf.Max(2, 8 - discount);
+    }
+
+    void UpdateShopButtonLabel(string childName, string label)
+    {
+        if (perkPanel == null) return;
+        Transform t = perkPanel.transform.Find(childName);
+        if (t == null) return;
+        Transform text = t.Find("Text");
+        if (text == null) return;
+        Text uiText = text.GetComponent<Text>();
+        if (uiText != null)
+        {
+            uiText.text = label;
+        }
     }
 
     void SetPerkShopButtonInteractable(string childName, bool interactable)
@@ -465,11 +739,20 @@ public class GameUI : MonoBehaviour
 
     void OnRerollPerksClicked()
     {
-        if (playerStatsRef == null || perkSystem == null) return;
-        if (!playerStatsRef.TrySpendCoins(8)) return;
+        if (playerStatsRef == null) return;
+        if (!playerStatsRef.TrySpendCoins(GetArtifactRerollCost())) return;
 
-        currentPerks = perkSystem.GetRandomPerks(3);
-        SetupPerkButtons();
+        if (artifactSystem != null)
+        {
+            currentArtifacts = artifactSystem.GetChoices(3);
+            SetupArtifactButtons();
+        }
+        else if (perkSystem != null)
+        {
+            currentPerks = perkSystem.GetRandomPerks(3);
+            SetupPerkButtons();
+        }
+
         RefreshPerkShopUI();
     }
 
@@ -518,8 +801,72 @@ public class GameUI : MonoBehaviour
     /// <summary>
     /// Единая палитра из docs/superpowers/specs/2026-03-23-visual-polish-design.md (меню + HUD).
     /// </summary>
+    void EnsureRuntimeHudElements()
+    {
+        if (damageFlashImage == null)
+        {
+            GameObject obj = new GameObject("DamageFlash");
+            obj.transform.SetParent(transform, false);
+            RectTransform rt = obj.AddComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            damageFlashImage = obj.AddComponent<Image>();
+            damageFlashImage.raycastTarget = false;
+            damageFlashImage.color = new Color(0.95f, 0.05f, 0.04f, 0f);
+            damageFlashImage.gameObject.SetActive(false);
+        }
+
+        if (hintText == null)
+        {
+            GameObject obj = new GameObject("HintText");
+            obj.transform.SetParent(transform, false);
+            RectTransform rt = obj.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0f);
+            rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = new Vector2(0f, 86f);
+            rt.sizeDelta = new Vector2(900f, 54f);
+
+            hintText = obj.AddComponent<Text>();
+            hintText.text = "";
+            hintText.fontSize = 20;
+            hintText.alignment = TextAnchor.MiddleCenter;
+            hintText.raycastTarget = false;
+            hintText.font = GetRuntimeFont();
+            hintText.gameObject.SetActive(false);
+        }
+
+        EnsureHintBackplate();
+        EnsureHudChrome();
+    }
+
+    Font GetRuntimeFont()
+    {
+        if (uiFont != null)
+        {
+            return uiFont;
+        }
+
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null)
+        {
+            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        }
+        return font;
+    }
+
     void ApplyVisualTheme()
     {
+        CanvasScaler scaler = GetComponent<CanvasScaler>();
+        if (scaler != null)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280f, 720f);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
         Color menuBackdrop = new Color(0.07f, 0.048f, 0.11f, 0.93f);
         Color titleCream = new Color(1f, 0.93f, 0.78f, 1f);
         Color bodyMuted = new Color(0.72f, 0.68f, 0.78f, 1f);
@@ -533,6 +880,7 @@ public class GameUI : MonoBehaviour
         StyleButtonsUnder(optionsPanel);
         StyleButtonsUnder(gameOverPanel);
         StyleButtonsUnder(perkPanel);
+        ApplyFontToAllText();
 
         StyleTextByName(mainMenuPanel, "Title", titleCream, 44, FontStyle.Bold);
         StyleTextByName(gameOverPanel, "GameOverTitle", titleCream, 52, FontStyle.Bold);
@@ -559,7 +907,11 @@ public class GameUI : MonoBehaviour
             RectTransform hbRt = healthBar.GetComponent<RectTransform>();
             if (hbRt != null)
             {
-                hbRt.sizeDelta = new Vector2(240f, 24f);
+                hbRt.anchorMin = new Vector2(0f, 1f);
+                hbRt.anchorMax = new Vector2(0f, 1f);
+                hbRt.pivot = new Vector2(0f, 1f);
+                hbRt.anchoredPosition = new Vector2(24f, -48f);
+                hbRt.sizeDelta = new Vector2(250f, 20f);
             }
 
             Transform bgTr = healthBar.transform.Find("Background");
@@ -577,38 +929,247 @@ public class GameUI : MonoBehaviour
         if (healthText != null)
         {
             healthText.color = new Color(0.98f, 0.9f, 0.9f, 1f);
-            healthText.fontSize = 20;
+            healthText.fontSize = 18;
             healthText.fontStyle = FontStyle.Bold;
+            healthText.alignment = TextAnchor.UpperLeft;
+            SetHudTextRect(healthText, new Vector2(24f, -72f), new Vector2(220f, 24f));
+            AddTextShadow(healthText, new Color(0f, 0f, 0f, 0.72f), new Vector2(1.5f, -1.5f));
         }
 
         if (levelText != null)
         {
-            levelText.color = new Color(0.52f, 0.48f, 0.58f, 1f);
-            levelText.fontSize = 22;
+            levelText.color = new Color(0.84f, 0.78f, 0.64f, 1f);
+            levelText.fontSize = 18;
+            levelText.fontStyle = FontStyle.Bold;
+            levelText.alignment = TextAnchor.UpperLeft;
+            SetHudTextRect(levelText, new Vector2(24f, -18f), new Vector2(150f, 24f));
+            AddTextShadow(levelText, new Color(0f, 0f, 0f, 0.72f), new Vector2(1.5f, -1.5f));
         }
 
         if (coinsText != null)
         {
             coinsText.color = new Color(1f, 0.84f, 0.22f, 1f);
-            coinsText.fontSize = 30;
+            coinsText.fontSize = 20;
             coinsText.fontStyle = FontStyle.Bold;
+            coinsText.alignment = TextAnchor.UpperRight;
+            SetHudTextRect(coinsText, new Vector2(194f, -18f), new Vector2(116f, 24f));
+            AddTextShadow(coinsText, new Color(0f, 0f, 0f, 0.72f), new Vector2(1.5f, -1.5f));
         }
 
         if (dashCooldownText != null)
         {
             dashCooldownText.color = new Color(0.42f, 0.68f, 0.76f, 1f);
+            dashCooldownText.fontSize = 16;
+            dashCooldownText.alignment = TextAnchor.UpperLeft;
+            SetHudTextRect(dashCooldownText, new Vector2(24f, -96f), new Vector2(260f, 24f));
+            AddTextShadow(dashCooldownText, new Color(0f, 0f, 0f, 0.72f), new Vector2(1.5f, -1.5f));
         }
 
         if (weaponModeText != null)
         {
-            weaponModeText.color = new Color(0.5f, 0.54f, 0.64f, 1f);
+            weaponModeText.color = new Color(0.63f, 0.68f, 0.78f, 1f);
+            weaponModeText.fontSize = 15;
+            weaponModeText.alignment = TextAnchor.UpperLeft;
+            SetHudTextRect(weaponModeText, new Vector2(24f, -119f), new Vector2(310f, 24f));
+            AddTextShadow(weaponModeText, new Color(0f, 0f, 0f, 0.72f), new Vector2(1.5f, -1.5f));
         }
 
         if (sealNotificationText != null)
         {
             sealNotificationText.fontSize = 30;
             sealNotificationText.fontStyle = FontStyle.Bold;
+            AddTextShadow(sealNotificationText, new Color(0f, 0f, 0f, 0.78f), new Vector2(2f, -2f));
         }
+
+        if (hintText != null)
+        {
+            hintText.fontSize = 18;
+            hintText.fontStyle = FontStyle.Bold;
+            AddTextShadow(hintText, new Color(0f, 0f, 0f, 0.84f), new Vector2(1.6f, -1.6f));
+        }
+    }
+
+    void EnsureHudChrome()
+    {
+        if (hudPanel == null) return;
+
+        Image status = EnsurePanelImage(hudPanel.transform, "HudStatusBackplate",
+            new Color(0.055f, 0.045f, 0.065f, 0.76f),
+            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+            new Vector2(14f, -12f), new Vector2(326f, 138f));
+        status.transform.SetAsFirstSibling();
+
+        Image accent = EnsurePanelImage(status.transform, "AccentStrip",
+            new Color(1f, 0.64f, 0.2f, 0.85f),
+            new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+            new Vector2(0f, 0f), new Vector2(4f, 138f));
+        accent.raycastTarget = false;
+
+        Transform compass = hudPanel.transform.Find("ExitCompassRow");
+        if (compass != null)
+        {
+            RectTransform rt = compass.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.anchorMin = new Vector2(1f, 1f);
+                rt.anchorMax = new Vector2(1f, 1f);
+                rt.pivot = new Vector2(1f, 1f);
+                rt.anchoredPosition = new Vector2(-22f, -18f);
+                rt.sizeDelta = new Vector2(92f, 86f);
+            }
+
+            Image compassBg = compass.GetComponent<Image>();
+            if (compassBg == null)
+            {
+                compassBg = compass.gameObject.AddComponent<Image>();
+            }
+            if (panelSprite != null)
+            {
+                compassBg.sprite = panelSprite;
+                compassBg.type = Image.Type.Sliced;
+            }
+            compassBg.color = new Color(0.055f, 0.045f, 0.065f, 0.72f);
+            compassBg.raycastTarget = false;
+
+            Transform arrow = compass.Find("ExitCompassArrow");
+            if (arrow != null && compassArrowSprite != null)
+            {
+                Text arrowText = arrow.GetComponent<Text>();
+                if (arrowText != null)
+                {
+                    arrowText.enabled = false;
+                }
+
+                Transform imageChild = arrow.Find("ExitCompassArrowImage");
+                if (imageChild == null)
+                {
+                    GameObject imageObj = new GameObject("ExitCompassArrowImage");
+                    imageObj.transform.SetParent(arrow, false);
+                    imageChild = imageObj.transform;
+                }
+
+                GameObject imageGameObject = imageChild.gameObject;
+                RectTransform imageRt = imageGameObject.GetComponent<RectTransform>();
+                if (imageRt == null)
+                {
+                    imageRt = imageGameObject.AddComponent<RectTransform>();
+                }
+                imageRt.anchorMin = Vector2.zero;
+                imageRt.anchorMax = Vector2.one;
+                imageRt.offsetMin = Vector2.zero;
+                imageRt.offsetMax = Vector2.zero;
+
+                Image arrowImage = imageGameObject.GetComponent<Image>();
+                if (arrowImage == null)
+                {
+                    arrowImage = imageGameObject.AddComponent<Image>();
+                }
+                arrowImage.sprite = compassArrowSprite;
+                arrowImage.preserveAspect = true;
+                arrowImage.color = new Color(1f, 0.82f, 0.15f, 1f);
+                arrowImage.raycastTarget = false;
+            }
+
+            Text[] texts = compass.GetComponentsInChildren<Text>(true);
+            for (int i = 0; i < texts.Length; i++)
+            {
+                texts[i].fontStyle = FontStyle.Bold;
+                AddTextShadow(texts[i], new Color(0f, 0f, 0f, 0.8f), new Vector2(1.4f, -1.4f));
+            }
+        }
+    }
+
+    void EnsureHintBackplate()
+    {
+        Transform existing = transform.Find("HintBackplate");
+        if (existing != null)
+        {
+            hintBackplateImage = existing.GetComponent<Image>();
+        }
+
+        if (hintBackplateImage == null)
+        {
+            GameObject obj = new GameObject("HintBackplate");
+            obj.transform.SetParent(transform, false);
+            RectTransform rt = obj.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 0f);
+            rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(0f, 86f);
+            rt.sizeDelta = new Vector2(820f, 42f);
+
+            hintBackplateImage = obj.AddComponent<Image>();
+            hintBackplateImage.raycastTarget = false;
+        }
+
+        if (panelSprite != null)
+        {
+            hintBackplateImage.sprite = panelSprite;
+            hintBackplateImage.type = Image.Type.Sliced;
+        }
+        hintBackplateImage.color = new Color(0.055f, 0.045f, 0.065f, 0.68f);
+        hintBackplateImage.gameObject.SetActive(false);
+        if (hintText != null)
+        {
+            hintBackplateImage.transform.SetSiblingIndex(hintText.transform.GetSiblingIndex());
+        }
+    }
+
+    Image EnsurePanelImage(Transform parent, string name, Color color, Vector2 anchorMin, Vector2 anchorMax,
+        Vector2 pivot, Vector2 anchoredPosition, Vector2 size)
+    {
+        Transform existing = parent.Find(name);
+        GameObject obj = existing != null ? existing.gameObject : new GameObject(name);
+        obj.transform.SetParent(parent, false);
+
+        RectTransform rt = obj.GetComponent<RectTransform>();
+        if (rt == null)
+        {
+            rt = obj.AddComponent<RectTransform>();
+        }
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.pivot = pivot;
+        rt.anchoredPosition = anchoredPosition;
+        rt.sizeDelta = size;
+
+        Image image = obj.GetComponent<Image>();
+        if (image == null)
+        {
+            image = obj.AddComponent<Image>();
+        }
+        if (panelSprite != null && name != "AccentStrip")
+        {
+            image.sprite = panelSprite;
+            image.type = Image.Type.Sliced;
+        }
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    static void SetHudTextRect(Text text, Vector2 anchoredPosition, Vector2 size)
+    {
+        RectTransform rt = text.GetComponent<RectTransform>();
+        if (rt == null) return;
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.anchoredPosition = anchoredPosition;
+        rt.sizeDelta = size;
+    }
+
+    static void AddTextShadow(Text text, Color color, Vector2 distance)
+    {
+        if (text == null) return;
+        Shadow shadow = text.GetComponent<Shadow>();
+        if (shadow == null)
+        {
+            shadow = text.gameObject.AddComponent<Shadow>();
+        }
+
+        shadow.effectColor = color;
+        shadow.effectDistance = distance;
     }
 
     static void ApplyMenuPanelBackdrop(GameObject panel, Color backdrop)
@@ -618,7 +1179,7 @@ public class GameUI : MonoBehaviour
         img.color = backdrop;
     }
 
-    static void StyleButtonsUnder(GameObject root)
+    void StyleButtonsUnder(GameObject root)
     {
         if (root == null) return;
         Button[] buttons = root.GetComponentsInChildren<Button>(true);
@@ -640,6 +1201,13 @@ public class GameUI : MonoBehaviour
             if (g != null)
             {
                 g.color = Color.white;
+                Image img = g as Image;
+                if (img != null && buttonSprite != null)
+                {
+                    img.sprite = buttonSprite;
+                    img.type = Image.Type.Sliced;
+                    img.color = new Color(0.92f, 0.68f, 0.22f, 1f);
+                }
             }
 
             Transform textTr = buttons[i].transform.Find("Text");
@@ -648,6 +1216,18 @@ public class GameUI : MonoBehaviour
                 txt.color = new Color(0.96f, 0.92f, 0.98f, 1f);
                 txt.fontStyle = FontStyle.Bold;
             }
+        }
+    }
+
+    void ApplyFontToAllText()
+    {
+        Font font = GetRuntimeFont();
+        if (font == null) return;
+
+        Text[] texts = GetComponentsInChildren<Text>(true);
+        for (int i = 0; i < texts.Length; i++)
+        {
+            texts[i].font = font;
         }
     }
 

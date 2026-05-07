@@ -15,8 +15,9 @@ public class PlayerController : MonoBehaviour
     public float maxLookAngle = 80f;
     public Transform cameraHolder;
 
-    [Header("Shooting")]
+    [Header("Combat")]
     public ProjectileShooter shooter;
+    public MeleeWeaponController meleeWeapon;
 
     [Header("Dash")]
     public float dashDistance = 6f;
@@ -26,6 +27,9 @@ public class PlayerController : MonoBehaviour
 
     [Header("Dash VFX")]
     [SerializeField] private DashVFX dashVFX;
+
+    [Header("Audio")]
+    [SerializeField] private float footstepInterval = 0.38f;
 
     CharacterController characterController;
     HealthSystem healthSystem;
@@ -40,18 +44,38 @@ public class PlayerController : MonoBehaviour
     float dashTimer;
     [HideInInspector] public float dashCooldownTimer;
     float iFrameTimer;
+    float footstepTimer;
     Vector3 dashDirection;
 
     public bool IsInvulnerable { get { return iFrameTimer > 0f; } }
 
+    void Awake()
+    {
+        CacheComponents();
+    }
+
     void Start()
     {
-        characterController = GetComponent<CharacterController>();
-        healthSystem = GetComponent<HealthSystem>();
+        CacheComponents();
+    }
+
+    void CacheComponents()
+    {
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
+        }
+
+        if (healthSystem == null)
+        {
+            healthSystem = GetComponent<HealthSystem>();
+        }
     }
 
     public void SetActive(bool active)
     {
+        CacheComponents();
+
         // Пока PlayerInput выключен, Input System не шлёт отпускание клавиш —
         // moveInput/lookInput остаются старыми и после рестарта/уровня дают «залипшее» движение.
         if (isDashing && dashVFX != null)
@@ -77,6 +101,8 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
+        CacheComponents();
+
         if (dashCooldownTimer > 0f)
         {
             dashCooldownTimer -= Time.deltaTime;
@@ -97,10 +123,36 @@ public class PlayerController : MonoBehaviour
         }
 
         HandleLook();
+        HandleFootsteps();
+    }
+
+    void HandleFootsteps()
+    {
+        if (characterController == null) return;
+        if (!characterController.isGrounded) return;
+        if (moveInput.sqrMagnitude < 0.1f)
+        {
+            footstepTimer = 0f;
+            return;
+        }
+
+        footstepTimer -= Time.deltaTime;
+        if (footstepTimer > 0f) return;
+
+        footstepTimer = isSprinting ? footstepInterval * 0.72f : footstepInterval;
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayFootstep();
+        }
     }
 
     void HandleMovement()
     {
+        if (characterController == null)
+        {
+            return;
+        }
+
         float currentSpeed = isSprinting ? moveSpeed * sprintMultiplier : moveSpeed;
 
         Vector3 forward = transform.forward * moveInput.y;
@@ -148,6 +200,13 @@ public class PlayerController : MonoBehaviour
 
     void UpdateDash()
     {
+        if (characterController == null)
+        {
+            isDashing = false;
+            if (dashVFX != null) dashVFX.OnDashEnd();
+            return;
+        }
+
         dashTimer -= Time.deltaTime;
 
         float dashSpeed = dashDistance / dashDuration;
@@ -189,6 +248,13 @@ public class PlayerController : MonoBehaviour
 
     void OnAttack(InputValue value)
     {
+        if (!value.isPressed) return;
+        if (meleeWeapon != null)
+        {
+            meleeWeapon.TryAttack();
+            return;
+        }
+
         if (shooter != null)
         {
             shooter.Shoot();
@@ -198,6 +264,12 @@ public class PlayerController : MonoBehaviour
     void OnPrevious(InputValue value)
     {
         if (!value.isPressed) return;
+        if (meleeWeapon != null)
+        {
+            meleeWeapon.CycleWeapon(-1);
+            return;
+        }
+
         if (shooter != null)
         {
             shooter.CycleWeapon(-1);
@@ -207,6 +279,12 @@ public class PlayerController : MonoBehaviour
     void OnNext(InputValue value)
     {
         if (!value.isPressed) return;
+        if (meleeWeapon != null)
+        {
+            meleeWeapon.CycleWeapon(1);
+            return;
+        }
+
         if (shooter != null)
         {
             shooter.CycleWeapon(1);
@@ -232,8 +310,20 @@ public class PlayerController : MonoBehaviour
 
     public void TeleportTo(Vector3 position)
     {
-        characterController.enabled = false;
+        CacheComponents();
+
+        bool wasControllerEnabled = characterController != null && characterController.enabled;
+        if (characterController != null)
+        {
+            characterController.enabled = false;
+        }
+
         transform.position = position;
-        characterController.enabled = true;
+        verticalVelocity = 0f;
+
+        if (characterController != null)
+        {
+            characterController.enabled = wasControllerEnabled;
+        }
     }
 }

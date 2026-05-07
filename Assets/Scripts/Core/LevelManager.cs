@@ -116,7 +116,14 @@ public class LevelManager : MonoBehaviour
 
         if (playerHealth != null)
         {
-            playerHealth.ResetHealth();
+            if (currentLevel == 1)
+            {
+                playerHealth.ResetHealth();
+            }
+            else if (playerStats != null)
+            {
+                playerHealth.Heal(playerStats.regenPerLevel + playerStats.levelStartHeal);
+            }
         }
 
         if (enemySpawner != null)
@@ -137,7 +144,7 @@ public class LevelManager : MonoBehaviour
             minimap.GenerateMapTexture();
         }
 
-        if (playerStats != null && playerStats.regenPerLevel > 0 && playerHealth != null)
+        if (currentLevel == 1 && playerStats != null && playerStats.regenPerLevel > 0 && playerHealth != null)
         {
             playerHealth.Heal(playerStats.regenPerLevel);
         }
@@ -161,11 +168,18 @@ public class LevelManager : MonoBehaviour
         if (player != null)
         {
             player.moveSpeed = 6f * playerStats.speedMultiplier;
+            player.dashCooldown = 1.5f * playerStats.dashCooldownMultiplier;
+            player.dashIFrames = 0.2f + playerStats.dashIFrameBonus;
 
             ProjectileShooter shooter = player.shooter;
             if (shooter != null)
             {
                 shooter.fireCooldown = 0.3f * (1f / playerStats.fireRateMultiplier);
+            }
+
+            if (player.meleeWeapon != null)
+            {
+                player.meleeWeapon.damageMultiplierSource = playerStats;
             }
         }
     }

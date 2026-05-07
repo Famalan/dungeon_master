@@ -9,6 +9,13 @@ public class PlayerStats : MonoBehaviour
     public float fireRateMultiplier = 1f;
     public float lootChanceBonus;
     public int regenPerLevel;
+    public float dashCooldownMultiplier = 1f;
+    public float blastRadiusMultiplier = 1f;
+    public float dashIFrameBonus;
+    public int chestCoinBonus;
+    public int levelStartHeal;
+    public int artifactRerollDiscount;
+    public ArtifactInventory artifactInventory = new ArtifactInventory();
 
     public void ResetStats()
     {
@@ -19,6 +26,22 @@ public class PlayerStats : MonoBehaviour
         fireRateMultiplier = 1f;
         lootChanceBonus = 0f;
         regenPerLevel = 0;
+        dashCooldownMultiplier = 1f;
+        blastRadiusMultiplier = 1f;
+        dashIFrameBonus = 0f;
+        chestCoinBonus = 0;
+        levelStartHeal = 0;
+        artifactRerollDiscount = 0;
+        EnsureArtifactInventory();
+        artifactInventory.Clear();
+    }
+
+    public void EnsureArtifactInventory()
+    {
+        if (artifactInventory == null)
+        {
+            artifactInventory = new ArtifactInventory();
+        }
     }
 
     public void AddCoins(int amount)

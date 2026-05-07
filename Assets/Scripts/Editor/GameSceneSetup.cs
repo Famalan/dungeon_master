@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -56,7 +57,9 @@ public class GameSceneSetup : EditorWindow
     {
         string[] fbxFiles = { "Skeleton", "Slime", "Dragon" };
         string fbxDir = "Assets/ExternalAssets/Monsters/FBX/";
-        bool anyChanged = false;
+        bool anyChanged = ConfigureBrokenVectorDungeonAssets();
+        anyChanged |= ConfigureKenneyUIAssets();
+        anyChanged |= ConfigureKayKitWeaponAssets();
 
         for (int i = 0; i < fbxFiles.Length; i++)
         {
@@ -98,11 +101,196 @@ public class GameSceneSetup : EditorWindow
         return anyChanged;
     }
 
+    static bool ConfigureKayKitWeaponAssets()
+    {
+        bool anyChanged = false;
+        string root = "Assets/ExternalAssets/KayKitFantasyWeaponsBits";
+        if (!System.IO.Directory.Exists(root)) return false;
+
+        string[] modelPaths = System.IO.Directory.GetFiles(root, "*.fbx", System.IO.SearchOption.AllDirectories);
+        for (int i = 0; i < modelPaths.Length; i++)
+        {
+            string modelPath = modelPaths[i].Replace('\\', '/');
+            ModelImporter importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+            if (importer == null) continue;
+
+            bool changed = false;
+            if (importer.importAnimation)
+            {
+                importer.importAnimation = false;
+                changed = true;
+            }
+
+            if (importer.materialLocation == ModelImporterMaterialLocation.External)
+            {
+                importer.materialLocation = ModelImporterMaterialLocation.InPrefab;
+                changed = true;
+            }
+
+            if (Mathf.Abs(importer.globalScale - 1f) > 0.001f)
+            {
+                importer.globalScale = 1f;
+                changed = true;
+            }
+
+            if (changed)
+            {
+                importer.SaveAndReimport();
+                anyChanged = true;
+            }
+        }
+
+        return anyChanged;
+    }
+
+    static bool ConfigureKenneyUIAssets()
+    {
+        bool anyChanged = false;
+        string uiRoot = "Assets/ExternalAssets/KenneyUIPack/PNG";
+        if (!System.IO.Directory.Exists(uiRoot)) return false;
+
+        string[] pngPaths = System.IO.Directory.GetFiles(uiRoot, "*.png", System.IO.SearchOption.AllDirectories);
+        for (int i = 0; i < pngPaths.Length; i++)
+        {
+            string path = pngPaths[i].Replace('\\', '/');
+            TextureImporter importer = AssetImporter.GetAtPath(path) as TextureImporter;
+            if (importer == null) continue;
+
+            bool changed = false;
+            if (importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                changed = true;
+            }
+
+            if (importer.spriteImportMode != SpriteImportMode.Single)
+            {
+                importer.spriteImportMode = SpriteImportMode.Single;
+                changed = true;
+            }
+
+            if (path.Contains("button_rectangle") || path.Contains("input_rectangle"))
+            {
+                Vector4 wantedBorder = new Vector4(14f, 14f, 14f, 14f);
+                if (importer.spriteBorder != wantedBorder)
+                {
+                    importer.spriteBorder = wantedBorder;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                importer.SaveAndReimport();
+                anyChanged = true;
+            }
+        }
+
+        return anyChanged;
+    }
+
+    static bool ConfigureBrokenVectorDungeonAssets()
+    {
+        bool anyChanged = false;
+        string[] readableModelPathList =
+        {
+            "Assets/ExternalAssets/BrokenVectorDungeon/Models/Tiles/Dungeon_Wall_Var1.fbx",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Models/Tiles/Dungeon_Wall_Var2.fbx",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Models/Tiles/Dungeon_Wall_Var3.fbx",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Models/Lamps/Torch_Wall.fbx"
+        };
+
+        HashSet<string> readableModelPaths = new HashSet<string>(readableModelPathList);
+        string[] allModelPaths = System.IO.Directory.GetFiles(
+            "Assets/ExternalAssets/BrokenVectorDungeon/Models",
+            "*.fbx",
+            System.IO.SearchOption.AllDirectories);
+
+        for (int i = 0; i < allModelPaths.Length; i++)
+        {
+            string modelPath = allModelPaths[i].Replace('\\', '/');
+            ModelImporter importer = AssetImporter.GetAtPath(modelPath) as ModelImporter;
+            if (importer == null) continue;
+
+            bool importerChanged = false;
+            if (readableModelPaths.Contains(modelPath) && !importer.isReadable)
+            {
+                importer.isReadable = true;
+                importerChanged = true;
+                Debug.Log("[Build Game] Enabled readable mesh: " + modelPath);
+            }
+
+            if (importer.materialLocation == ModelImporterMaterialLocation.External)
+            {
+                importer.materialLocation = ModelImporterMaterialLocation.InPrefab;
+                importerChanged = true;
+                Debug.Log("[Build Game] Moved model materials into prefab import data: " + modelPath);
+            }
+
+            if (importerChanged)
+            {
+                importer.SaveAndReimport();
+                anyChanged = true;
+            }
+        }
+
+        Shader urpLit = Shader.Find("Universal Render Pipeline/Lit");
+        if (urpLit == null)
+        {
+            Debug.LogWarning("[Build Game] URP Lit shader not found; BrokenVectorDungeon materials were not converted.");
+            return anyChanged;
+        }
+
+        string[] materialGuids = AssetDatabase.FindAssets(
+            "t:Material",
+            new[] { "Assets/ExternalAssets/BrokenVectorDungeon/Materials" });
+
+        for (int i = 0; i < materialGuids.Length; i++)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(materialGuids[i]);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null || material.shader == urpLit) continue;
+
+            Texture albedo = material.HasProperty("_MainTex") ? material.GetTexture("_MainTex") : null;
+            Color color = material.HasProperty("_Color") ? material.GetColor("_Color") : Color.white;
+            Color emission = material.HasProperty("_EmissionColor") ? material.GetColor("_EmissionColor") : Color.black;
+            float metallic = material.HasProperty("_Metallic") ? material.GetFloat("_Metallic") : 0f;
+            float smoothness = material.HasProperty("_Glossiness") ? material.GetFloat("_Glossiness") : 0.2f;
+
+            material.shader = urpLit;
+
+            if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", albedo);
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
+            if (material.HasProperty("_Metallic")) material.SetFloat("_Metallic", metallic);
+            if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", smoothness);
+            if (material.HasProperty("_EmissionColor")) material.SetColor("_EmissionColor", emission);
+            if (emission.maxColorComponent > 0.001f)
+            {
+                material.EnableKeyword("_EMISSION");
+            }
+
+            EditorUtility.SetDirty(material);
+            anyChanged = true;
+            Debug.Log("[Build Game] Converted material to URP Lit: " + path);
+        }
+
+        if (anyChanged)
+        {
+            AssetDatabase.SaveAssets();
+        }
+
+        return anyChanged;
+    }
+
     void AutoAssignAll()
     {
         // Load materials
         Material floorMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/FloorMaterial.mat");
-        Material wallMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/WallMaterial.mat");
+        Material wallMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/ExternalAssets/BrokenVectorDungeon/Materials/Stone_Wall.mat");
+        if (wallMat == null)
+        {
+            wallMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/WallMaterial.mat");
+        }
         Material ceilingMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/CeilingMaterial.mat");
         Material exitMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/ExitMaterial.mat");
         Material sealMat = AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/SealMaterial.mat");
@@ -112,7 +300,17 @@ public class GameSceneSetup : EditorWindow
         GameObject rangerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Enemies/Ranger.prefab");
         GameObject tankPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Enemies/Tank.prefab");
         GameObject projectilePrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Combat/Projectile.prefab");
-        GameObject torchPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Dungeon/Torch.prefab");
+        GameObject torchPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Lamps/Torch_Wall.prefab");
+        if (torchPrefab == null)
+        {
+            torchPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Dungeon/Torch.prefab");
+        }
+        GameObject[] wallPrefabs =
+        {
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Tiles/Dungeon_Wall_Var1.prefab"),
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Tiles/Dungeon_Wall_Var2.prefab"),
+            AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Tiles/Dungeon_Wall_Var3.prefab")
+        };
         GameObject explosionPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/VFX/Explosion.prefab");
 
         // Load input actions
@@ -131,6 +329,9 @@ public class GameSceneSetup : EditorWindow
                 builder.ceilingMaterial = ceilingMat;
                 builder.exitMaterial = exitMat;
                 builder.torchPrefab = torchPrefab;
+                builder.wallPrefabs = wallPrefabs;
+                builder.wallVisualOverlap = 0.08f;
+                builder.wallCollisionOverlap = 0.16f;
                 AudioClip chestSfx = AssetDatabase.LoadAssetAtPath<AudioClip>(
                     "Assets/ExternalAssets/KenneyImpact/Audio/impactMetal_light_003.ogg");
                 if (chestSfx != null)
@@ -138,6 +339,26 @@ public class GameSceneSetup : EditorWindow
                     builder.chestOpenClip = chestSfx;
                 }
                 EditorUtility.SetDirty(builder);
+            }
+
+            DungeonDecorLayer decor = gmObj.GetComponent<DungeonDecorLayer>();
+            if (decor != null)
+            {
+                AssignDecorPrefabs(decor);
+                if (builder != null) builder.decorLayer = decor;
+                EditorUtility.SetDirty(decor);
+            }
+
+            DungeonGenerator generator = gmObj.GetComponent<DungeonGenerator>();
+            if (generator != null)
+            {
+                generator.gridWidth = 72;
+                generator.gridHeight = 72;
+                generator.maxRooms = 10;
+                generator.roomMinSize = 6;
+                generator.roomMaxSize = 10;
+                generator.roomPadding = 3;
+                EditorUtility.SetDirty(generator);
             }
 
             EnemySpawner spawner = gmObj.GetComponent<EnemySpawner>();
@@ -187,6 +408,78 @@ public class GameSceneSetup : EditorWindow
             {
                 shooter.projectilePrefab = projectilePrefab;
                 EditorUtility.SetDirty(shooter);
+            }
+
+            PlayerController playerController = playerObj.GetComponent<PlayerController>();
+            Transform cameraHolder = null;
+            if (playerController != null)
+            {
+                cameraHolder = playerController.cameraHolder;
+            }
+            if (cameraHolder == null)
+            {
+                Transform foundHolder = playerObj.transform.Find("CameraHolder");
+                if (foundHolder != null) cameraHolder = foundHolder;
+            }
+
+            if (playerController != null && cameraHolder != null)
+            {
+                WeaponViewModelController viewModel = cameraHolder.GetComponentInChildren<WeaponViewModelController>(true);
+                if (viewModel == null)
+                {
+                    GameObject createdViewModelRoot = new GameObject("WeaponViewModel");
+                    createdViewModelRoot.transform.SetParent(cameraHolder, false);
+                    viewModel = createdViewModelRoot.AddComponent<WeaponViewModelController>();
+                }
+
+                Transform viewModelRoot = viewModel.transform;
+                if (viewModel.swordModel == null)
+                {
+                    viewModel.swordModel = CreateWeaponViewModelChild(viewModelRoot, "SwordModel",
+                        "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/sword_D.fbx",
+                        Vector3.zero, new Vector3(74f, -18f, -12f), 0.78f);
+                }
+                if (viewModel.axeModel == null)
+                {
+                    viewModel.axeModel = CreateWeaponViewModelChild(viewModelRoot, "AxeModel",
+                        "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/axe_C.fbx",
+                        Vector3.zero, new Vector3(72f, -20f, -15f), 0.82f);
+                }
+                if (viewModel.spearModel == null)
+                {
+                    viewModel.spearModel = CreateWeaponViewModelChild(viewModelRoot, "SpearModel",
+                        "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/spear_A.fbx",
+                        new Vector3(0f, -0.06f, 0.06f), new Vector3(82f, -12f, -8f), 0.95f);
+                }
+                if (viewModel.hammerModel == null)
+                {
+                    viewModel.hammerModel = CreateWeaponViewModelChild(viewModelRoot, "HammerModel",
+                        "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/hammer_B.fbx",
+                        Vector3.zero, new Vector3(72f, -22f, -18f), 0.84f);
+                }
+                if (viewModel.bowModel == null)
+                {
+                    viewModel.bowModel = CreateWeaponViewModelChild(viewModelRoot, "BowModel",
+                        "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/bow_A_withString.fbx",
+                        new Vector3(-0.04f, -0.03f, 0.1f), new Vector3(66f, -14f, -88f), 0.92f);
+                }
+                ConfigureWeaponViewModel(viewModel);
+                viewModel.SetMode(MeleeWeaponMode.Sword);
+
+                MeleeWeaponController melee = playerObj.GetComponent<MeleeWeaponController>();
+                if (melee == null)
+                {
+                    melee = playerObj.AddComponent<MeleeWeaponController>();
+                }
+                melee.attackOrigin = cameraHolder;
+                melee.viewModel = viewModel;
+                melee.rangedShooter = playerObj.GetComponent<ProjectileShooter>();
+                PlayerStats stats = gmObj != null ? gmObj.GetComponent<PlayerStats>() : null;
+                if (stats != null) melee.damageMultiplierSource = stats;
+                playerController.meleeWeapon = melee;
+                EditorUtility.SetDirty(viewModel);
+                EditorUtility.SetDirty(melee);
+                EditorUtility.SetDirty(playerController);
             }
 
             UnityEngine.InputSystem.PlayerInput playerInput =
@@ -241,8 +534,8 @@ public class GameSceneSetup : EditorWindow
         }
 
         // Wire audio clips from Kenney packs
-        AudioClip impactHit = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/ExternalAssets/KenneyImpact/Audio/impactMetal_light_003.ogg");
-        AudioClip impactEnemyHit = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/ExternalAssets/KenneyImpact/Audio/impactPunch_heavy_002.ogg");
+        AudioClip impactHit = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/ExternalAssets/KenneyImpact/Audio/impactWood_heavy_002.ogg");
+        AudioClip impactEnemyHit = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/ExternalAssets/KenneyImpact/Audio/impactPunch_heavy_004.ogg");
         AudioClip dashSound = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/ExternalAssets/KenneyImpact/Audio/impactSoft_medium_000.ogg");
 
         // Wire HitEffectSpawner on projectile prefab
@@ -334,8 +627,10 @@ public class GameSceneSetup : EditorWindow
         EnemySpawner spawner = gmObj.AddComponent<EnemySpawner>();
         PlayerStats playerStats = gmObj.AddComponent<PlayerStats>();
         PerkSystem perkSystem = gmObj.AddComponent<PerkSystem>();
+        ArtifactSystem artifactSystem = gmObj.AddComponent<ArtifactSystem>();
         RoomSealManager sealManager = gmObj.AddComponent<RoomSealManager>();
         AudioManager audioManager = gmObj.AddComponent<AudioManager>();
+        AssignAudioManagerClips(audioManager);
 
         LevelManager levelMgr = gmObj.AddComponent<LevelManager>();
         levelMgr.dungeonGenerator = gen;
@@ -348,14 +643,24 @@ public class GameSceneSetup : EditorWindow
         gmObj.AddComponent<CombatTextManager>();
 
         builder.generator = gen;
+        DungeonDecorLayer decorLayer = gmObj.AddComponent<DungeonDecorLayer>();
+        AssignDecorPrefabs(decorLayer);
+        builder.decorLayer = decorLayer;
         builder.tileSize = 0.85f;
         builder.wallHeight = 2.5f;
-        gen.roomMinSize = 4;
-        gen.roomMaxSize = 7;
-        gen.maxRooms = 14;
+        builder.wallVisualOverlap = 0.08f;
+        builder.wallCollisionOverlap = 0.16f;
+        gen.gridWidth = 72;
+        gen.gridHeight = 72;
+        gen.roomMinSize = 6;
+        gen.roomMaxSize = 10;
+        gen.maxRooms = 10;
+        gen.roomPadding = 3;
 
         builder.chestOpenClip = AssetDatabase.LoadAssetAtPath<AudioClip>(
             "Assets/ExternalAssets/KenneyImpact/Audio/impactMetal_light_003.ogg");
+        builder.lootChestPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Chest.prefab");
 
         // --- Player ---
         GameObject playerObj = new GameObject("Player");
@@ -426,6 +731,13 @@ public class GameSceneSetup : EditorWindow
             mainCam.gameObject.AddComponent<CinemachineBrain>();
         }
 
+        FirstPersonCameraFollower cameraFollower = mainCam.GetComponent<FirstPersonCameraFollower>();
+        if (cameraFollower == null)
+        {
+            cameraFollower = mainCam.gameObject.AddComponent<FirstPersonCameraFollower>();
+        }
+        cameraFollower.target = cameraHolder.transform;
+
         GameObject cmCamObj = new GameObject("CinemachineCamera");
         cmCamObj.transform.SetParent(cameraHolder.transform);
         cmCamObj.transform.localPosition = Vector3.zero;
@@ -442,6 +754,34 @@ public class GameSceneSetup : EditorWindow
         shooter.firePoint = firePoint.transform;
         shooter.muzzleFlash = firePoint.AddComponent<PlayerMuzzleFlash>();
         pc.shooter = shooter;
+
+        GameObject viewModelRoot = new GameObject("WeaponViewModel");
+        viewModelRoot.transform.SetParent(cameraHolder.transform);
+        WeaponViewModelController viewModel = viewModelRoot.AddComponent<WeaponViewModelController>();
+        viewModel.swordModel = CreateWeaponViewModelChild(viewModelRoot.transform, "SwordModel",
+            "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/sword_D.fbx",
+            new Vector3(0f, 0f, 0f), new Vector3(74f, -18f, -12f), 0.78f);
+        viewModel.axeModel = CreateWeaponViewModelChild(viewModelRoot.transform, "AxeModel",
+            "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/axe_C.fbx",
+            new Vector3(0f, 0f, 0f), new Vector3(72f, -20f, -15f), 0.82f);
+        viewModel.spearModel = CreateWeaponViewModelChild(viewModelRoot.transform, "SpearModel",
+            "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/spear_A.fbx",
+            new Vector3(0f, -0.06f, 0.06f), new Vector3(82f, -12f, -8f), 0.95f);
+        viewModel.hammerModel = CreateWeaponViewModelChild(viewModelRoot.transform, "HammerModel",
+            "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/hammer_B.fbx",
+            new Vector3(0f, 0f, 0f), new Vector3(72f, -22f, -18f), 0.84f);
+        viewModel.bowModel = CreateWeaponViewModelChild(viewModelRoot.transform, "BowModel",
+            "Assets/ExternalAssets/KayKitFantasyWeaponsBits/KayKit_FantasyWeaponsBits_1.0_FREE/Assets/fbx(unity)/bow_A_withString.fbx",
+            new Vector3(-0.04f, -0.03f, 0.1f), new Vector3(66f, -14f, -88f), 0.92f);
+        ConfigureWeaponViewModel(viewModel);
+        viewModel.SetMode(MeleeWeaponMode.Sword);
+
+        MeleeWeaponController melee = playerObj.AddComponent<MeleeWeaponController>();
+        melee.attackOrigin = cameraHolder.transform;
+        melee.damageMultiplierSource = playerStats;
+        melee.viewModel = viewModel;
+        melee.rangedShooter = shooter;
+        pc.meleeWeapon = melee;
 
         GameObject playerBody = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         playerBody.name = "PlayerBody";
@@ -460,9 +800,11 @@ public class GameSceneSetup : EditorWindow
 
         GameUI gameUI = canvasObj.AddComponent<GameUI>();
         gameUI.perkSystem = perkSystem;
+        gameUI.artifactSystem = artifactSystem;
         gameUI.playerRef = pc;
         gameUI.playerHealthRef = playerHealth;
         gameUI.playerStatsRef = playerStats;
+        AssignGameUIAssets(gameUI);
 
         CreateUIPanel(canvasObj.transform, "MainMenuPanel", gameUI, "mainMenu");
         CreateUIPanel(canvasObj.transform, "HUDPanel", gameUI, "hud");
@@ -495,6 +837,108 @@ public class GameSceneSetup : EditorWindow
 
         Debug.Log("Game scene setup complete!");
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+    }
+
+    void AssignGameUIAssets(GameUI gameUI)
+    {
+        if (gameUI == null) return;
+
+        gameUI.uiFont = AssetDatabase.LoadAssetAtPath<Font>(
+            "Assets/ExternalAssets/KenneyUIPack/Font/Kenney Future Narrow.ttf");
+        gameUI.panelSprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+            "Assets/ExternalAssets/KenneyUIPack/PNG/Extra/Default/input_rectangle.png");
+        gameUI.buttonSprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+            "Assets/ExternalAssets/KenneyUIPack/PNG/Yellow/Default/button_rectangle_depth_flat.png");
+        gameUI.compassArrowSprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+            "Assets/ExternalAssets/KenneyUIPack/PNG/Yellow/Default/arrow_basic_s.png");
+    }
+
+    void AssignDecorPrefabs(DungeonDecorLayer decor)
+    {
+        if (decor == null) return;
+
+        decor.floorPropPrefabs = LoadPrefabArray(
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Barrel_Closed.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Barrel_Open.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Table_Small.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Bench.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Carpet_Red.prefab");
+        decor.wallPropPrefabs = LoadPrefabArray(
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Banner.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/WeaponRack_Small.prefab",
+            "Assets/ExternalAssets/BrokenVectorDungeon/Prefabs/Furniture/Shelf_Wall.prefab");
+        decor.lightPrefabs = System.Array.Empty<GameObject>();
+        decor.prefabPropChance = 1f;
+        decor.usePrimitiveFallback = false;
+    }
+
+    GameObject[] LoadPrefabArray(params string[] paths)
+    {
+        List<GameObject> prefabs = new List<GameObject>();
+        for (int i = 0; i < paths.Length; i++)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(paths[i]);
+            if (prefab != null)
+            {
+                prefabs.Add(prefab);
+            }
+        }
+
+        return prefabs.ToArray();
+    }
+
+    void AssignAudioManagerClips(AudioManager audioManager)
+    {
+        if (audioManager == null) return;
+
+        SerializedObject so = new SerializedObject(audioManager);
+        SetAudioClipArray(so, "footstepClips", new string[]
+        {
+            "Assets/ExternalAssets/KenneyRPG/Audio/footstep00.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/footstep01.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/footstep02.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/footstep03.ogg"
+        });
+
+        SetAudioClipArray(so, "coinPickupClips", new string[]
+        {
+            "Assets/ExternalAssets/KenneyRPG/Audio/handleCoins.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/handleCoins2.ogg"
+        });
+
+        SetAudioClipArray(so, "damageTakenClips", new string[]
+        {
+            "Assets/ExternalAssets/KenneyImpact/Audio/impactPunch_heavy_000.ogg",
+            "Assets/ExternalAssets/KenneyImpact/Audio/impactPunch_heavy_002.ogg",
+            "Assets/ExternalAssets/KenneyImpact/Audio/impactSoft_heavy_000.ogg"
+        });
+
+        SetAudioClipArray(so, "uiClickClips", new string[]
+        {
+            "Assets/ExternalAssets/KenneyRPG/Audio/metalClick.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/bookFlip1.ogg"
+        });
+
+        SetAudioClipArray(so, "ambientStingerClips", new string[]
+        {
+            "Assets/ExternalAssets/KenneyRPG/Audio/creak1.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/creak2.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/doorClose_1.ogg",
+            "Assets/ExternalAssets/KenneyRPG/Audio/metalLatch.ogg"
+        });
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    void SetAudioClipArray(SerializedObject so, string fieldName, string[] paths)
+    {
+        SerializedProperty prop = so.FindProperty(fieldName);
+        if (prop == null) return;
+
+        prop.arraySize = paths.Length;
+        for (int i = 0; i < paths.Length; i++)
+        {
+            prop.GetArrayElementAtIndex(i).objectReferenceValue = AssetDatabase.LoadAssetAtPath<AudioClip>(paths[i]);
+        }
     }
 
     void CreateUIPanel(Transform parent, string panelName, GameUI gameUI, string type)
@@ -820,6 +1264,7 @@ public class GameSceneSetup : EditorWindow
 
         gameUI.perkButtons = new UnityEngine.UI.Button[3];
         gameUI.perkButtonTexts = new UnityEngine.UI.Text[3];
+        gameUI.perkButtonIconTexts = new UnityEngine.UI.Text[3];
 
         for (int i = 0; i < 3; i++)
         {
@@ -842,6 +1287,15 @@ public class GameSceneSetup : EditorWindow
 
             GameObject textObj = CreateUIText(btnObj.transform, "PerkText", "Perk " + (i + 1), 16, Vector2.zero);
             gameUI.perkButtonTexts[i] = textObj.GetComponent<UnityEngine.UI.Text>();
+            RectTransform textRect = textObj.GetComponent<RectTransform>();
+            textRect.anchoredPosition = new Vector2(18f, -4f);
+            textRect.sizeDelta = new Vector2(156f, 104f);
+
+            GameObject iconObj = CreateUIText(btnObj.transform, "ArtifactIcon", "*", 28, new Vector2(-72f, 34f));
+            UnityEngine.UI.Text iconText = iconObj.GetComponent<UnityEngine.UI.Text>();
+            iconText.fontStyle = FontStyle.Bold;
+            iconText.raycastTarget = false;
+            gameUI.perkButtonIconTexts[i] = iconText;
         }
 
         panel.SetActive(false);
@@ -981,7 +1435,7 @@ public class GameSceneSetup : EditorWindow
         CreateEnemyPrefab("Ranger", EnemyType.Ranger, 20, 3f, 12, 8f,
             new Color(0.5f, 0.1f, 0.7f), new Vector3(0.9f, 0.9f, 0.9f));
         CreateEnemyPrefab("Tank", EnemyType.Tank, 80, 2f, 20, 2f,
-            new Color(0.15f, 0.7f, 0.15f), new Vector3(0.78f, 0.78f, 0.78f));
+            new Color(0.15f, 0.7f, 0.15f), new Vector3(1.08f, 1.08f, 1.08f));
 
         Debug.Log("All 3 enemy prefabs created in Assets/Prefabs/Enemies/");
     }
@@ -1023,6 +1477,8 @@ public class GameSceneSetup : EditorWindow
         UnityEngine.AI.NavMeshAgent agent = enemy.AddComponent<UnityEngine.AI.NavMeshAgent>();
         agent.speed = speed;
         agent.stoppingDistance = (type == EnemyType.Ranger) ? 6f : 1.5f;
+        agent.radius = type == EnemyType.Tank ? 0.68f : 0.42f;
+        agent.height = type == EnemyType.Tank ? 1.75f : 1.8f;
 
         EnemyAI ai = enemy.AddComponent<EnemyAI>();
         ai.enemyType = type;
@@ -1060,22 +1516,20 @@ public class GameSceneSetup : EditorWindow
             deathSO.ApplyModifiedProperties();
         }
 
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
-        if (shader == null) shader = Shader.Find("Standard");
-        Material mat = new Material(shader);
-        mat.color = color;
-        if (mat.HasProperty("_EmissionColor"))
+        if (fbxModel == null)
         {
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", color * 0.3f);
-        }
-        string matPath = "Assets/Materials/" + typeName + "Material.mat";
-        AssetDatabase.CreateAsset(mat, matPath);
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null) shader = Shader.Find("Standard");
+            Material mat = new Material(shader);
+            mat.color = color;
+            string matPath = "Assets/Materials/" + typeName + "Material.mat";
+            AssetDatabase.CreateAsset(mat, matPath);
 
-        Renderer[] renderers = enemy.GetComponentsInChildren<Renderer>();
-        for (int r = 0; r < renderers.Length; r++)
-        {
-            renderers[r].material = mat;
+            Renderer[] renderers = enemy.GetComponentsInChildren<Renderer>();
+            for (int r = 0; r < renderers.Length; r++)
+            {
+                renderers[r].material = mat;
+            }
         }
 
         if (enemy.GetComponent<Animator>() == null)
@@ -1210,6 +1664,62 @@ public class GameSceneSetup : EditorWindow
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+    }
+
+    GameObject CreateWeaponViewModelChild(Transform parent, string objectName, string assetPath,
+        Vector3 localPosition, Vector3 localEuler, float localScale)
+    {
+        GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+        GameObject weapon;
+        if (source != null)
+        {
+            weapon = (GameObject)PrefabUtility.InstantiatePrefab(source);
+            weapon.name = objectName;
+        }
+        else
+        {
+            weapon = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            weapon.name = objectName;
+        }
+
+        weapon.transform.SetParent(parent, false);
+        weapon.transform.localPosition = localPosition;
+        weapon.transform.localRotation = Quaternion.Euler(localEuler);
+        weapon.transform.localScale = Vector3.one * localScale;
+
+        Collider[] colliders = weapon.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < colliders.Length; i++)
+        {
+            DestroyImmediate(colliders[i]);
+        }
+
+        return weapon;
+    }
+
+    void ConfigureWeaponViewModel(WeaponViewModelController viewModel)
+    {
+        if (viewModel == null) return;
+
+        viewModel.restLocalPosition = new Vector3(0.72f, -0.42f, 1.12f);
+        viewModel.restLocalEuler = new Vector3(12f, -34f, 9f);
+        viewModel.swingLocalOffset = new Vector3(-0.34f, 0.16f, 0.28f);
+        viewModel.swingLocalEulerOffset = new Vector3(58f, 52f, -36f);
+        viewModel.visibleScaleMultiplier = 1.34f;
+
+        SetWeaponModelPose(viewModel.swordModel, Vector3.zero, new Vector3(74f, -18f, -12f), 0.96f);
+        SetWeaponModelPose(viewModel.axeModel, Vector3.zero, new Vector3(72f, -20f, -15f), 1.02f);
+        SetWeaponModelPose(viewModel.spearModel, new Vector3(0f, -0.08f, 0.16f), new Vector3(84f, -10f, -6f), 1.15f);
+        SetWeaponModelPose(viewModel.hammerModel, Vector3.zero, new Vector3(72f, -22f, -18f), 1.04f);
+        SetWeaponModelPose(viewModel.bowModel, new Vector3(-0.04f, -0.03f, 0.1f), new Vector3(66f, -14f, -88f), 1.08f);
+    }
+
+    void SetWeaponModelPose(GameObject model, Vector3 localPosition, Vector3 localEuler, float localScale)
+    {
+        if (model == null) return;
+
+        model.transform.localPosition = localPosition;
+        model.transform.localRotation = Quaternion.Euler(localEuler);
+        model.transform.localScale = Vector3.one * localScale;
     }
 
     void CreateProjectilePrefab()

@@ -1,188 +1,181 @@
 # 3D Roguelike Dungeon Crawler
 
-Unity 6 (URP) проект -- roguelike dungeon crawler с процедурной генерацией подземелий, тремя типами врагов, системой лута и перков.
+Unity 6 / URP проект: roguelike dungeon crawler от первого лица с процедурной генерацией уровней, комнатами-аренами, ближним и дальним боем, лутом, артефактами и ростом сложности между уровнями.
 
-## Реализованные механики
+Игровой цикл: начать забег -> зачистить процедурное подземелье -> собрать монеты и сундуки -> найти выход -> выбрать артефакт между уровнями -> перейти глубже. При смерти игрок возвращается на экран Game Over и может начать заново.
 
-### 1. Процедурная генерация подземелий
-- Алгоритм Random Room Placement: случайное размещение комнат на сетке с проверкой пересечений (AABB)
-- L-образные коридоры между комнатами (3 клетки шириной)
-- Стартовая комната ближе к углу (0,0), выход -- максимально далеко (Manhattan distance)
-- Перегенерация если расстояние между стартом и выходом < gridWidth/3
-- Враги спавнятся по зонам:
-  - Стартовая комната: 0 врагов
-  - Ближние (dist < 15): 0-1 врагов
-  - Средние (15-30): 2-3 врага
-  - Дальние (30+): 3-5 врагов
-  - Выход: 4-6 врагов
-- Сложность растёт с каждым уровнем
+## Текущее состояние
 
-### 2. Запечатывание комнат (Room Sealing) -- нетривиальная механика
-- При входе в комнату с врагами проходы блокируются красными стенами
-- Игрок вынужден сражаться -- убежать невозможно
-- После убийства всех врагов стены исчезают и проходы открываются
-- Стартовая комната не запечатывается
-- Реализовано через триггер-зоны (`BoxCollider` + `RoomSealZone`) с отслеживанием живых врагов
+- Версия Unity: `6000.4.0f1`.
+- Рендер: Universal Render Pipeline `17.4.0`.
+- Основная сцена: `Assets/Scenes/SampleScene.unity`.
+- Основная команда подготовки сцены: `Tools > Build Game`.
+- Проект закрывает требования учебного задания: нетривиальные механики, меню, оптимизация, встроенные Unity-инструменты и кастомные Editor-инструменты.
 
-### 3. Dash с неуязвимостью (i-frames) -- нетривиальная механика
-- Клавиша **Q** -- рывок в направлении движения (или вперёд если стоишь)
-- Дистанция: 6 юнитов за 0.15 сек
-- Во время рывка игрок неуязвим (i-frames = 0.2 сек)
-- Кулдаун: 1.5 сек
-- `HealthSystem.TakeDamage()` проверяет `PlayerController.IsInvulnerable` перед нанесением урона
-- Позволяет уклоняться от снарядов Rangers и AoE атак
+## Основные механики
 
-### 4. Боевая система
-- Прямые снаряды -- летят по `transform.forward` от точки выстрела
-- При попадании -- взрыв с Area of Effect уроном
-- VFX: частицы взрыва, подсветка, тряска камеры через Cinemachine Impulse
-- Система владельца снаряда: игрок не вредит себе, враги-Rangers стреляют в игрока
+### Процедурное подземелье
 
-### 3. Три типа врагов
-| Тип | Цвет | HP | Скорость | Урон | Поведение |
-|-----|-------|-----|---------|------|-----------|
-| Grunt | Красный | 30 | 4 | 8 | Ближний бой |
-| Ranger | Фиолетовый | 20 | 3 | 12 | Стреляет на расстоянии 8 |
-| Tank | Зелёный | 80 | 2 | 20 | Ближний бой, размер 1.4x |
+- `DungeonGenerator` размещает случайные комнаты на сетке с проверкой пересечений и отступами.
+- Стартовая комната выбирается ближе к началу сетки, выход - как самая дальняя комната по Manhattan distance.
+- Комнаты соединяются L-образными коридорами, после чего строится `FloorMap`.
+- `DungeonBuilder` на лету создаёт пол, стены, потолок, факелы, выход, сундуки, декор и `NavMeshSurface`.
+- Враги не спавнятся в стартовой комнате и ближайших безопасных комнатах; плотность врагов растёт с расстоянием от старта.
+- У выхода появляется усиленный `ExitGuardian`.
 
-- Выбор типа по расстоянию от старта: ближние -- Grunt, средние -- Grunt/Ranger, дальние -- все типы
-- AI: патруль → обнаружение → преследование/атака → потеря цели
-- Ranger отступает при сближении и стреляет снарядами
+### Запечатывание комнат
 
-### 4. Система лута
-- Враги дропают монеты (золотые сферы) при смерти с шансом 50%
-- Монеты поднимаются при приближении к ним (radius 2)
-- Визуальный эффект: покачивание + вращение
-- Перк "Scavenger" увеличивает шанс дропа
+- При входе в комнату с живыми врагами `RoomSealZone` блокирует проходы временными стенами.
+- Игрок не может убежать из комнаты, пока не зачистит её.
+- После смерти всех врагов барьеры исчезают, а HUD показывает уведомление о зачистке.
+- Стартовая комната не запечатывается.
 
-### 5. Система перков
-Между уровнями игрок выбирает 1 из 3 случайных перков:
-| Перк | Эффект |
-|------|--------|
-| Thick Skin | +20 Max HP |
-| Quick Hands | +25% Fire Rate |
-| Power Shot | +30% Damage |
-| Swift Feet | +15% Move Speed |
-| Scavenger | +25% Loot Chance |
-| Regeneration | +10 HP per level |
+### Движение и бой
 
-Перки стакаются -- можно выбрать один и тот же несколько раз.
+- FPS-управление через New Input System: движение, мышь, прыжок, спринт и dash.
+- Dash на `Q`: рывок на 6 юнитов за 0.15 сек, кулдаун 1.5 сек, i-frames 0.2 сек.
+- Ближнее оружие через `MeleeWeaponController`: меч, топор, копьё, молот и лук.
+- Переключение оружия: `1` / `2`.
+- `ProjectileShooter` поддерживает режимы выстрела: стандартный снаряд, дробь, медленная сфера и луч.
+- Попадания дают урон, VFX, звук, floating combat text и при необходимости AoE-взрыв.
 
-## Встроенные инструменты Unity
+### Враги
 
-### Particle System / VFX
-- Эффект взрыва при попадании снаряда (частицы, свет, ударная волна)
-- Подсветка летящего снаряда (Point Light)
+| Тип | Роль | Поведение |
+|-----|------|-----------|
+| `Grunt` | быстрый ближний враг | Патрулирует, преследует игрока, атакует в ближнем бою |
+| `Ranger` | дальний враг | Держит дистанцию, отступает при сближении, стреляет снарядами |
+| `Tank` | тяжёлый враг | Медленный, живучий, наносит высокий урон вблизи |
 
-### Cinemachine 3.x
-- `CinemachineCamera` -- виртуальная камера от первого лица
-- `CinemachineBrain` -- управление основной камерой
-- `CinemachineImpulseSource` + `CinemachineImpulseListener` -- тряска камеры при взрывах
-- Пакет: `com.unity.cinemachine` (v3.1.3)
+Дополнительно `EnemySpawner` может сделать врага элитным: повышается здоровье, масштаб и шанс дополнительного лута. Вероятность элиты растёт с уровнем, но ограничена сверху.
 
-### Запекание освещения
-- Mixed Lighting: запечённый ambient + realtime точечные источники от факелов
-- Факелы с кронштейнами прикреплены к стенам комнат (не летают в воздухе)
-- Освещение коридоров: факелы каждые 8 клеток
-- Fog для глубины подземелья
-- Volume с Bloom, Vignette, Color Adjustments
+### Лут, сундуки и прогрессия
 
-### AI Navigation
-- NavMeshSurface строится процедурно после генерации подземелья
-- NavMeshAgent на врагах для патрулирования и преследования
-- Пакет: `com.unity.ai.navigation`
+- Враги с шансом 50% роняют монеты; шанс увеличивается бонусами игрока.
+- Элитные враги могут уронить дополнительную монету.
+- На уровне появляется 1-3 сундука в обычных комнатах; сундуки дают монеты и учитывают бонусы артефактов.
+- Между уровнями игрок выбирает 1 из 3 артефактов.
+- Монеты тратятся на реролл артефактов и лечение между уровнями.
 
-## Кастомные Editor-инструменты
+### Артефакты и синергии
 
-### Tools > Dungeon Preview
-Окно для предпросмотра генерации подземелий без запуска игры. Позволяет настраивать параметры (размер сетки, количество комнат, размеры) и мгновенно видеть результат.
+Артефакты действуют только в текущем забеге и сбрасываются при новой игре. У каждого артефакта есть редкость, цвет, иконка и тег.
 
-### Tools > Setup Game Scene
-Создаёт все необходимые GameObject'ы в сцене одним нажатием кнопки "DO EVERYTHING": GameManager, Player с Cinemachine камерой, UI Canvas с главным меню, HUD, настройками, панелью перков и Game Over.
+| Тег | 2/4 синергия | 4/4 синергия |
+|-----|--------------|--------------|
+| `Flame` | Бонус к урону | Бонус к радиусу взрывов |
+| `Shadow` | Быстрее dash | Дольше i-frames |
+| `Gold` | Больше шанс лута | Больше монет из сундуков и дешевле реролл |
+| `Vitality` | Больше максимальное HP | Дополнительное лечение в начале уровня |
+| `Momentum` | Выше скорость движения | Быстрее стрельба |
 
-### Tools > Setup Lighting
-Настраивает атмосферное освещение подземелья: тёмный ambient, fog, Volume с пост-обработкой.
+В проекте также остался `PerkSystem` как fallback-слой: если `ArtifactSystem` недоступен, экран выбора может показать классические перки.
 
-### Tools > Optimization Setup
-Инструмент для оптимизации производительности:
-- **Static Batching** -- объединение статических мешей для уменьшения draw calls
-- **Dynamic Batching** -- объединение мелких динамических объектов
-- **Occlusion Culling** -- пропуск рендеринга объектов за стенами
-- **GPU Instancing** -- включение на всех материалах
-- Кнопка "APPLY ALL" для применения всех оптимизаций одним нажатием
+## Интерфейс и обратная связь
 
-## Оптимизация
+- Главное меню: `Start Game`, `Options`, `Quit`.
+- Options: чувствительность мыши и громкость, сохранение через `PlayerPrefs`.
+- HUD: здоровье, уровень, монеты, готовность dash, текущий режим оружия, уведомления о запечатывании.
+- Визуальная обратная связь: low HP vignette, damage flash, combat text, kill streak UI.
+- Навигация: стрелка-компас к выходу, опциональная миникарта, прицел.
+- Звук: музыка меню/подземелья, ambient loop, stingers, шаги, попадания, подбор монет, клики UI.
 
-| Техника | Реализация |
-|---------|-----------|
-| Static Batching | Стены, полы, потолки помечены `isStatic = true` |
-| Dynamic Batching | Включён в Player Settings |
-| Occlusion Culling | Флаги Occluder/Occludee на статических объектах |
-| Frustum Culling | Встроен в Unity (включён по умолчанию) |
-| GPU Instancing | Включён на материалах подземелья |
-| Light Baking | Mixed Lighting + baked ambient |
-| Fog | Exponential fog для оптимизации отдалённых объектов |
+## Покрытие требований
+
+| Требование | Реализация |
+|-----------|------------|
+| 1-2 нетривиальные механики | Room Sealing, dash с i-frames, система артефактов с синергиями |
+| Меню игры | Главное меню, Options, Game Over, межуровневый выбор артефакта |
+| Встроенные Unity-инструменты | URP, Cinemachine 3.x, Particle System, AI Navigation, New Input System |
+| Кастомный инструмент | `Tools > Build Game`, `Tools > Dungeon Preview` |
+| Оптимизация | Static/Dynamic Batching, `isStatic`, Occlusion Culling flags, GPU Instancing, Fog, baked GI |
+| Отчётность | README описывает механику, запуск, структуру и соответствие требованиям |
 
 ## Быстрый старт
 
-### 1. Открыть проект в Unity 6
-Версия: Unity 6000.4.0f1
+1. Открыть проект в Unity `6000.4.0f1`.
+2. Открыть сцену `Assets/Scenes/SampleScene.unity`.
+3. Запустить `Tools > Build Game`.
+4. Дождаться настройки импортов, создания сцены, применения освещения и оптимизаций.
+5. Нажать `Play`.
 
-### 2. Подождать импорт пакетов
-Cinemachine и AI Navigation установятся автоматически из `manifest.json`.
-
-### 3. Настроить сцену (один клик)
-1. **Tools > Setup Game Scene > DO EVERYTHING** -- создаст материалы, 3 типа префабов врагов, снаряд, факел, взрыв, объекты сцены и назначит все ссылки автоматически
-2. **Ctrl+S** для сохранения сцены
-
-### 4. Настроить освещение
-1. **Tools > Setup Lighting > Apply Dungeon Lighting Settings**
-2. **Tools > Setup Lighting > Create Ambient Volume**
-
-### 5. Применить оптимизации
-1. **Tools > Optimization Setup > APPLY ALL OPTIMIZATIONS**
-
-### 6. Запустить
-Play -- появится главное меню. Кнопки: Start Game, Options, Quit.
+`Tools > Build Game` выполняет полный bootstrap: настраивает импорт FBX, Kenney UI и KayKit assets, создаёт материалы, врагов, оружие, снаряды, VFX, факелы, UI, ссылки между объектами, освещение и оптимизации. Если Unity перезагрузит скрипты после реимпорта, сборка продолжится автоматически.
 
 ## Управление
 
 | Действие | Клавиша |
 |----------|---------|
-| Движение | WASD |
+| Движение | `WASD` или стрелки |
 | Камера | Мышь |
-| Стрельба | ЛКМ |
-| Прыжок | Пробел |
-| Спринт | Shift |
-| Рывок (Dash) | Q |
+| Атака | ЛКМ или `Enter` |
+| Предыдущее оружие | `1` |
+| Следующее оружие | `2` |
+| Прыжок | `Space` |
+| Спринт | `Left Shift` |
+| Dash | `Q` |
 
-## Настройки (Options)
+## Editor-инструменты
 
-В главном меню доступна кнопка **Options**:
-- **Mouse Sensitivity** -- чувствительность мыши (0.5 - 10.0)
-- **Volume** -- громкость звука (0% - 100%)
+### `Tools > Build Game`
 
-Настройки сохраняются между сессиями через PlayerPrefs.
+Полностью собирает игровую сцену: ассеты, материалы, префабы, врагов, игрока, UI, VFX, освещение и оптимизации.
+
+### `Tools > Dungeon Preview`
+
+Окно предпросмотра генерации подземелья без запуска Play Mode. Позволяет менять размер сетки, количество комнат, размеры комнат и padding.
+
+### Lighting и Optimization setup
+
+`LightingSetup` и `OptimizationSetup` вызываются из `Tools > Build Game`. Они настраивают ambient/fog/post-processing, batching, статические флаги, occlusion flags и GPU instancing.
 
 ## Структура проекта
 
-```
+```text
 Assets/Scripts/
-  Core/        -- GameManager, PlayerStats, PerkSystem
-  Dungeon/     -- DungeonGenerator, DungeonBuilder, RoomData, CorridorData, DungeonTorch, RoomSealManager, RoomSealZone
-  Player/      -- PlayerController (FPS движение + стрельба)
-  Combat/      -- Projectile, ProjectileShooter, HealthSystem, ExplosionVFXTrigger, LootDrop, EnemyDeathHandler
-  AI/          -- EnemyAI (NavMesh: 3 типа врагов), EnemySpawner
-  UI/          -- GameUI (меню + настройки + перки), CrosshairUI, MinimapUI
-  Editor/      -- DungeonPreviewWindow, GameSceneSetup, LightingSetup, OptimizationSetup
+  AI/       EnemyAI, EnemySpawner
+  Combat/   HealthSystem, Projectile, ProjectileShooter, MeleeWeaponController, loot/VFX helpers
+  Core/     GameManager, LevelManager, PlayerStats, GameEvents, AudioManager, ArtifactSystem, PerkSystem
+  Dungeon/  DungeonGenerator, DungeonBuilder, RoomSeal*, ExitPortalTrigger, LootChest, decor layer
+  Player/   PlayerController, camera follower, dash and muzzle VFX
+  UI/       GameUI, CrosshairUI, MinimapUI, ExitCompassUI, CombatTextManager, KillStreakUI
+  Editor/   Build Game, Dungeon Preview, lighting/optimization setup, Edit Mode tests
+
+Assets/ExternalAssets/
+  BrokenVectorDungeon/
+  KayKitFantasyWeaponsBits/
+  KenneyImpact/
+  KenneyMiniDungeon/
+  KenneyRPG/
+  KenneyUIPack/
 ```
 
-## Технологии
+## Тесты
 
-- Unity 6000.4 (URP 17.4)
-- New Input System
-- NavMesh (AI Navigation)
-- Particle System
-- Cinemachine 3.x (CinemachineCamera, Impulse)
-- Mixed Lighting + Light Baking
-- Static/Dynamic Batching + Occlusion Culling + GPU Instancing
+В проекте есть Edit Mode тесты на ключевые системы:
+
+- `ArtifactSystemEditModeTests`
+- `PlayerControllerEditModeTests`
+- `MeleeAndPlacementEditModeTests`
+- `DungeonGenerationPolishEditModeTests`
+- `DungeonBuilderAssetEditModeTests`
+- `UserRequestedVisualPolishEditModeTests`
+
+Запуск: Unity Test Runner -> Edit Mode.
+
+## Зависимости
+
+| Пакет | Версия |
+|-------|--------|
+| Unity | `6000.4.0f1` |
+| Universal RP | `17.4.0` |
+| Input System | `1.19.0` |
+| Cinemachine | `3.1.3` |
+| AI Navigation | `2.0.11` |
+| Unity Test Framework | `1.6.0` |
+| Visual Effect Graph | `17.4.0` |
+
+## Asset Credits
+
+- Ultimate Low Poly Dungeon by Broken Vector / Thane5, CC-BY 4.0: https://brokenvector.itch.io/ultimate-low-poly-dungeon and https://github.com/Thane5/dungeon-assets
+- Kenney asset packs, CC0: Impact Sounds, Mini Dungeon, RPG Audio, UI Pack.
+- KayKit Fantasy Weapons Bits, CC0.

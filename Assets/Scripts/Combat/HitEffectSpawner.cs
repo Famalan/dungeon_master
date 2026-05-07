@@ -49,7 +49,7 @@ public class HitEffectSpawner : MonoBehaviour
         AudioClip clip = hitEnemy ? hitEnemySFX : hitSFX;
         if (clip != null)
         {
-            AudioManager.Instance.PlayExplosionWithBassAtPoint(clip, position);
+            AudioManager.Instance.PlaySFXAtPoint(clip, position, hitEnemy ? 0.62f : 0.42f);
         }
     }
 

@@ -19,6 +19,7 @@ public class LootChest : MonoBehaviour
         PlayerStats stats = Object.FindAnyObjectByType<PlayerStats>();
         if (stats != null)
         {
+            amount += stats.chestCoinBonus;
             stats.AddCoins(amount);
         }
 

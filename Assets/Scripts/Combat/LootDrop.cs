@@ -52,6 +52,11 @@ public class LootDrop : MonoBehaviour
             cachedStats.AddCoins(coinValue);
         }
 
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayCoinPickup();
+        }
+
         Destroy(gameObject);
     }
 

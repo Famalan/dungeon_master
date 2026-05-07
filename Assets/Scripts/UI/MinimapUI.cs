@@ -3,6 +3,9 @@ using System.Collections.Generic;
 
 public class MinimapUI : MonoBehaviour
 {
+    [Header("Visibility")]
+    public bool showMinimap = false;
+
     [Header("Minimap Settings")]
     public int mapSize = 150;
     public int cellSize = 2;
@@ -79,6 +82,7 @@ public class MinimapUI : MonoBehaviour
 
     void OnGUI()
     {
+        if (!showMinimap) return;
         if (!mapReady || mapTexture == null) return;
 
         float drawX = Screen.width - mapSize - padding;

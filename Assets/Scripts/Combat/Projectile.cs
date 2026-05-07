@@ -82,9 +82,19 @@ public class Projectile : MonoBehaviour
     void Explode()
     {
         bool hitEnemy = false;
+        float effectiveExplosionRadius = explosionRadius;
+        if (firedByPlayer)
+        {
+            PlayerStats stats = GetPlayerStats();
+            if (stats != null)
+            {
+                effectiveExplosionRadius *= stats.blastRadiusMultiplier;
+            }
+        }
+
         int hitCount = Physics.OverlapSphereNonAlloc(
             transform.position,
-            explosionRadius,
+            effectiveExplosionRadius,
             overlapBuffer
         );
 
@@ -109,11 +119,7 @@ public class Projectile : MonoBehaviour
                 int dmg = damage;
                 if (firedByPlayer)
                 {
-                    if (cachedPlayerStats == null)
-                    {
-                        cachedPlayerStats = Object.FindAnyObjectByType<PlayerStats>();
-                    }
-
+                    PlayerStats cachedPlayerStats = GetPlayerStats();
                     if (cachedPlayerStats != null)
                     {
                         dmg = Mathf.Max(1, Mathf.RoundToInt(damage * cachedPlayerStats.damageMultiplier));
@@ -138,6 +144,16 @@ public class Projectile : MonoBehaviour
         }
 
         Destroy(gameObject);
+    }
+
+    static PlayerStats GetPlayerStats()
+    {
+        if (cachedPlayerStats == null)
+        {
+            cachedPlayerStats = Object.FindAnyObjectByType<PlayerStats>();
+        }
+
+        return cachedPlayerStats;
     }
 
     static bool ColBelongsToTag(Collider col, string unityTag)

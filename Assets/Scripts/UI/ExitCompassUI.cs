@@ -5,6 +5,7 @@ public class ExitCompassUI : MonoBehaviour
 {
     public GameObject compassPanel;
     public RectTransform arrowRoot;
+    public float arrowSpriteAngleOffsetDegrees = 180f;
 
     Transform playerTransform;
     DungeonBuilder dungeonBuilder;
@@ -71,6 +72,6 @@ public class ExitCompassUI : MonoBehaviour
         float angleToExit = Mathf.Atan2(toExit.x, toExit.z) * Mathf.Rad2Deg;
         float playerYaw = playerTransform.eulerAngles.y;
         float relative = Mathf.DeltaAngle(playerYaw, angleToExit);
-        arrowRoot.localEulerAngles = new Vector3(0f, 0f, -relative);
+        arrowRoot.localEulerAngles = new Vector3(0f, 0f, -relative + arrowSpriteAngleOffsetDegrees);
     }
 }

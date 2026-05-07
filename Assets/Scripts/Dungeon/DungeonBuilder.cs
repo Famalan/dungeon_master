@@ -11,6 +11,9 @@ public class DungeonBuilder : MonoBehaviour
     [Header("Tile Settings")]
     public float tileSize = 0.85f;
     public float wallHeight = 2.5f;
+    public float wallThickness = 0.1f;
+    public float wallVisualOverlap = 0.08f;
+    public float wallCollisionOverlap = 0.16f;
 
     [Header("Materials")]
     public Material floorMaterial;
@@ -21,11 +24,18 @@ public class DungeonBuilder : MonoBehaviour
     [Header("Prefabs")]
     public GameObject exitPortalPrefab;
     public GameObject torchPrefab;
+    public GameObject[] wallPrefabs;
 
     [Header("Corridor Lighting")]
     public int corridorLightInterval = 8;
 
+    [Header("Decoration")]
+    public DungeonDecorLayer decorLayer;
+    public int enemySafeRoomSteps = 1;
+    public float minEnemySpawnDistanceFromPlayer = 10f;
+
     [Header("Loot")]
+    public GameObject lootChestPrefab;
     public AudioClip chestOpenClip;
 
     Transform dungeonParent;
@@ -56,19 +66,64 @@ public class DungeonBuilder : MonoBehaviour
         PlaceLootChests();
 
         RebuildNavMesh();
+        PlaceDecorLayer();
+    }
+
+    void PlaceDecorLayer()
+    {
+        if (decorLayer == null)
+        {
+            decorLayer = GetComponent<DungeonDecorLayer>();
+        }
+
+        if (decorLayer != null)
+        {
+            decorLayer.Decorate(dungeonParent, generator, tileSize, wallHeight, CreatePlacementContext());
+        }
+    }
+
+    DungeonPlacementContext CreatePlacementContext()
+    {
+        DungeonPlacementContext context = new DungeonPlacementContext();
+        context.ReserveCircle(playerSpawnPosition, 2.6f);
+        context.ReserveCircle(exitPosition, 2.1f);
+
+        for (int i = 0; i < enemySpawnPoints.Count; i++)
+        {
+            context.ReserveCircle(enemySpawnPoints[i], 1.1f);
+        }
+
+        if (dungeonParent != null)
+        {
+            LootChest[] chests = dungeonParent.GetComponentsInChildren<LootChest>(true);
+            for (int i = 0; i < chests.Length; i++)
+            {
+                Bounds bounds;
+                if (TryGetRendererBounds(chests[i].gameObject, out bounds))
+                {
+                    context.ReserveCircle(bounds.center, Mathf.Max(bounds.extents.x, bounds.extents.z) + 0.35f);
+                }
+                else
+                {
+                    context.ReserveCircle(chests[i].transform.position, 1.1f);
+                }
+            }
+        }
+
+        return context;
     }
 
     public void ClearDungeon()
     {
         if (dungeonParent != null)
         {
-            Destroy(dungeonParent.gameObject);
+            DestroyDungeonObject(dungeonParent.gameObject);
         }
 
         GameObject existing = GameObject.Find("Dungeon");
         if (existing != null)
         {
-            Destroy(existing);
+            DestroyDungeonObject(existing);
         }
     }
 
@@ -103,8 +158,9 @@ public class DungeonBuilder : MonoBehaviour
 
                 GameObject ceiling = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 ceiling.transform.SetParent(floorParent.transform);
-                ceiling.transform.position = new Vector3(x * tileSize, wallHeight, y * tileSize);
-                ceiling.transform.localScale = new Vector3(tileSize, 0.1f, tileSize);
+                ceiling.transform.position = new Vector3(x * tileSize, wallHeight + 0.025f, y * tileSize);
+                float ceilingOverlap = Mathf.Max(0.03f, wallThickness * 0.8f);
+                ceiling.transform.localScale = new Vector3(tileSize + ceilingOverlap, 0.14f, tileSize + ceilingOverlap);
                 ceiling.isStatic = true;
 
                 Material ceilMat = ceilingMaterial != null ? ceilingMaterial : floorMaterial;
@@ -128,28 +184,146 @@ public class DungeonBuilder : MonoBehaviour
 
     void CreateWall(Transform parent, int x, int y, Vector3 direction, Material mat)
     {
+        float halfTile = tileSize * 0.5f;
+        Vector3 basePos = new Vector3(x * tileSize, wallHeight * 0.5f, y * tileSize);
+        Vector3 offset = direction * halfTile;
+        Vector3 wallCenter = basePos + offset;
+
+        GameObject wallPrefab = GetWallPrefab();
+        if (wallPrefab != null)
+        {
+            GameObject wallInstance = Instantiate(wallPrefab, Vector3.zero, GetWallMountedRotation(direction), parent);
+            wallInstance.name = wallPrefab.name;
+            ScaleWallPrefabToTile(wallInstance, wallPrefab);
+            AlignRendererBoundsCenter(wallInstance, wallCenter);
+            RemoveAllColliders(wallInstance);
+            AddWallBoxCollider(wallInstance, wallCenter);
+            SetStaticRecursively(wallInstance);
+            return;
+        }
+
         GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
         wall.transform.SetParent(parent);
         wall.isStatic = true;
 
-        float halfTile = tileSize * 0.5f;
-        Vector3 basePos = new Vector3(x * tileSize, wallHeight * 0.5f, y * tileSize);
-        Vector3 offset = direction * halfTile;
+        wall.transform.position = wallCenter;
 
-        wall.transform.position = basePos + offset;
-
+        float thickness = Mathf.Max(0.01f, wallThickness);
         if (direction == Vector3.forward || direction == Vector3.back)
         {
-            wall.transform.localScale = new Vector3(tileSize, wallHeight, 0.1f);
+            wall.transform.localScale = new Vector3(GetWallVisualLength(), wallHeight, thickness);
         }
         else
         {
-            wall.transform.localScale = new Vector3(0.1f, wallHeight, tileSize);
+            wall.transform.localScale = new Vector3(thickness, wallHeight, GetWallVisualLength());
         }
 
         if (mat != null)
         {
             wall.GetComponent<Renderer>().sharedMaterial = mat;
+        }
+    }
+
+    GameObject GetWallPrefab()
+    {
+        if (wallPrefabs == null || wallPrefabs.Length == 0) return null;
+
+        int start = Random.Range(0, wallPrefabs.Length);
+        for (int i = 0; i < wallPrefabs.Length; i++)
+        {
+            GameObject prefab = wallPrefabs[(start + i) % wallPrefabs.Length];
+            if (prefab != null) return prefab;
+        }
+
+        return null;
+    }
+
+    Quaternion GetWallMountedRotation(Vector3 wallNormal)
+    {
+        Vector3 interiorDirection = -wallNormal;
+        if (interiorDirection.sqrMagnitude < 0.001f)
+        {
+            return Quaternion.identity;
+        }
+
+        return Quaternion.LookRotation(interiorDirection, Vector3.up);
+    }
+
+    void ScaleWallPrefabToTile(GameObject wallInstance, GameObject sourcePrefab)
+    {
+        Bounds sourceBounds;
+        if (!TryGetRendererBounds(sourcePrefab, out sourceBounds)) return;
+
+        Vector3 sourceSize = sourceBounds.size;
+        Vector3 scale = wallInstance.transform.localScale;
+        scale.x *= GetWallVisualLength() / Mathf.Max(0.001f, sourceSize.x);
+        scale.y *= wallHeight / Mathf.Max(0.001f, sourceSize.y);
+        scale.z *= Mathf.Max(0.01f, wallThickness) / Mathf.Max(0.001f, sourceSize.z);
+        wallInstance.transform.localScale = scale;
+    }
+
+    float GetWallVisualLength()
+    {
+        return tileSize + Mathf.Max(0f, wallVisualOverlap);
+    }
+
+    float GetWallCollisionLength()
+    {
+        return tileSize + Mathf.Max(0f, wallCollisionOverlap);
+    }
+
+    void AddWallBoxCollider(GameObject wallInstance, Vector3 wallCenter)
+    {
+        BoxCollider box = wallInstance.AddComponent<BoxCollider>();
+        box.isTrigger = false;
+        box.center = wallInstance.transform.InverseTransformPoint(wallCenter);
+
+        Vector3 scale = wallInstance.transform.lossyScale;
+        box.size = new Vector3(
+            GetWallCollisionLength() / Mathf.Max(0.001f, Mathf.Abs(scale.x)),
+            wallHeight / Mathf.Max(0.001f, Mathf.Abs(scale.y)),
+            Mathf.Max(0.01f, wallThickness) / Mathf.Max(0.001f, Mathf.Abs(scale.z))
+        );
+    }
+
+    void AlignRendererBoundsCenter(GameObject target, Vector3 desiredCenter)
+    {
+        Bounds bounds;
+        if (TryGetRendererBounds(target, out bounds))
+        {
+            target.transform.position += desiredCenter - bounds.center;
+        }
+        else
+        {
+            target.transform.position = desiredCenter;
+        }
+    }
+
+    bool TryGetRendererBounds(GameObject target, out Bounds bounds)
+    {
+        Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+        if (renderers.Length == 0)
+        {
+            bounds = new Bounds();
+            return false;
+        }
+
+        bounds = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++)
+        {
+            bounds.Encapsulate(renderers[i].bounds);
+        }
+
+        return true;
+    }
+
+    void SetStaticRecursively(GameObject target)
+    {
+        target.isStatic = true;
+        Transform[] children = target.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            children[i].gameObject.isStatic = true;
         }
     }
 
@@ -207,10 +381,12 @@ public class DungeonBuilder : MonoBehaviour
             int spawnCount = GetEnemyCountForRoom(room);
             for (int s = 0; s < spawnCount; s++)
             {
-                float sx = Random.Range(room.X + 1, room.X + room.Width - 1) * tileSize;
-                float sy = Random.Range(room.Y + 1, room.Y + room.Height - 1) * tileSize;
-                enemySpawnPoints.Add(new Vector3(sx, 0.5f, sy));
-                enemySpawnRoomDistances.Add(room.DistanceFromStart);
+                Vector3 spawnPosition;
+                if (TryPickEnemySpawnPosition(room, out spawnPosition))
+                {
+                    enemySpawnPoints.Add(spawnPosition);
+                    enemySpawnRoomDistances.Add(room.DistanceFromStart);
+                }
             }
         }
     }
@@ -238,6 +414,7 @@ public class DungeonBuilder : MonoBehaviour
     int GetEnemyCountForRoom(RoomData room)
     {
         if (room.Type == RoomType.Start) return 0;
+        if (room.GraphStepsFromStart <= enemySafeRoomSteps) return 0;
 
         int dist = room.DistanceFromStart;
 
@@ -245,6 +422,27 @@ public class DungeonBuilder : MonoBehaviour
         if (dist < 15) return Random.Range(0, 2);
         if (dist < 30) return Random.Range(2, 4);
         return Random.Range(3, 6);
+    }
+
+    bool TryPickEnemySpawnPosition(RoomData room, out Vector3 spawnPosition)
+    {
+        for (int attempt = 0; attempt < 16; attempt++)
+        {
+            float sx = Random.Range(room.X + 1, room.X + room.Width - 1) * tileSize;
+            float sy = Random.Range(room.Y + 1, room.Y + room.Height - 1) * tileSize;
+            Vector3 candidate = new Vector3(sx, 0.5f, sy);
+            if ((candidate - playerSpawnPosition).sqrMagnitude <
+                minEnemySpawnDistanceFromPlayer * minEnemySpawnDistanceFromPlayer)
+            {
+                continue;
+            }
+
+            spawnPosition = candidate;
+            return true;
+        }
+
+        spawnPosition = Vector3.zero;
+        return false;
     }
 
     void PlaceRoomTorches()
@@ -323,8 +521,9 @@ public class DungeonBuilder : MonoBehaviour
 
         if (torchPrefab != null)
         {
-            GameObject torch = Instantiate(torchPrefab, pos, Quaternion.identity, dungeonParent);
+            GameObject torch = Instantiate(torchPrefab, pos, GetWallMountedRotation(wallNormal), dungeonParent);
             RemoveAllColliders(torch);
+            EnsureTorchFlicker(torch);
         }
         else
         {
@@ -376,8 +575,9 @@ public class DungeonBuilder : MonoBehaviour
 
                 if (torchPrefab != null)
                 {
-                    GameObject torch = Instantiate(torchPrefab, pos, Quaternion.identity, dungeonParent);
+                    GameObject torch = Instantiate(torchPrefab, pos, GetWallMountedRotation(wallDir), dungeonParent);
                     RemoveAllColliders(torch);
+                    EnsureTorchFlicker(torch);
                 }
                 else
                 {
@@ -473,10 +673,35 @@ public class DungeonBuilder : MonoBehaviour
             candidates.RemoveAt(pick);
 
             RoomData r = generator.Rooms[roomIndex];
-            float gx = Random.Range(r.X + 1, r.X + r.Width - 1) * tileSize;
-            float gz = Random.Range(r.Y + 1, r.Y + r.Height - 1) * tileSize;
-            CreateLootChest(new Vector3(gx, 0f, gz));
+            Vector3 chestPosition = PickLogicalChestPosition(r);
+            CreateLootChest(chestPosition);
         }
+    }
+
+    Vector3 PickLogicalChestPosition(RoomData room)
+    {
+        Vector2Int[] anchors =
+        {
+            new Vector2Int(room.X + 1, room.Y + 1),
+            new Vector2Int(room.X + room.Width - 2, room.Y + 1),
+            new Vector2Int(room.X + 1, room.Y + room.Height - 2),
+            new Vector2Int(room.X + room.Width - 2, room.Y + room.Height - 2),
+            new Vector2Int(room.Center.x, room.Y + 1),
+            new Vector2Int(room.Center.x, room.Y + room.Height - 2)
+        };
+
+        int start = Random.Range(0, anchors.Length);
+        for (int i = 0; i < anchors.Length; i++)
+        {
+            Vector2Int cell = anchors[(start + i) % anchors.Length];
+            Vector3 pos = new Vector3(cell.x * tileSize, 0f, cell.y * tileSize);
+            if ((pos - playerSpawnPosition).sqrMagnitude > 6f * 6f)
+            {
+                return pos;
+            }
+        }
+
+        return new Vector3(room.Center.x * tileSize, 0f, room.Center.y * tileSize);
     }
 
     void CreateLootChest(Vector3 floorXZ)
@@ -484,39 +709,88 @@ public class DungeonBuilder : MonoBehaviour
         float y = 0.05f + 0.22f;
         Vector3 pos = new Vector3(floorXZ.x, y, floorXZ.z);
 
-        GameObject chest = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        chest.name = "LootChest";
-        chest.layer = LayerMask.NameToLayer("Default");
-        chest.transform.SetParent(dungeonParent);
-        chest.transform.position = pos;
-        chest.transform.localScale = new Vector3(0.5f, 0.44f, 0.38f);
-
-        Renderer rend = chest.GetComponent<Renderer>();
-        if (rend != null)
+        GameObject chest;
+        if (lootChestPrefab != null)
         {
-            if (runtimeChestMaterial == null)
-            {
-                Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-                if (lit == null) lit = Shader.Find("Standard");
-                runtimeChestMaterial = new Material(lit);
-                runtimeChestMaterial.color = new Color(0.78f, 0.52f, 0.16f);
-            }
-
-            rend.sharedMaterial = runtimeChestMaterial;
+            chest = Instantiate(lootChestPrefab, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f), dungeonParent);
+            chest.transform.localScale = chest.transform.localScale * 0.92f;
+            AlignVisualToFloor(chest, floorXZ, 0.05f);
+        }
+        else
+        {
+            chest = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            chest.transform.SetParent(dungeonParent);
+            chest.transform.position = pos;
+            chest.transform.localScale = new Vector3(0.5f, 0.44f, 0.38f);
+            ApplyFallbackChestMaterial(chest);
         }
 
-        Destroy(chest.GetComponent<Collider>());
+        chest.name = "LootChest";
+        chest.layer = LayerMask.NameToLayer("Default");
+        IgnoreFromNavMeshBuild(chest);
+
+        RemoveAllColliders(chest);
         BoxCollider trigger = chest.AddComponent<BoxCollider>();
         trigger.isTrigger = true;
-        trigger.size = new Vector3(1.2f, 1.05f, 1.2f);
+        trigger.size = new Vector3(1.25f, 1.05f, 1.25f);
+        trigger.center = new Vector3(0f, 0.48f, 0f);
 
         NavMeshObstacle obstacle = chest.AddComponent<NavMeshObstacle>();
-        obstacle.size = new Vector3(0.52f, 0.44f, 0.4f);
+        obstacle.size = new Vector3(0.82f, 0.75f, 0.82f);
         obstacle.carving = true;
         obstacle.carveOnlyStationary = true;
 
         LootChest loot = chest.AddComponent<LootChest>();
         loot.openSound = chestOpenClip;
+    }
+
+    void IgnoreFromNavMeshBuild(GameObject target)
+    {
+        Transform[] children = target.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i] != target.transform && children[i].GetComponent<Renderer>() == null)
+            {
+                continue;
+            }
+
+            NavMeshModifier modifier = children[i].GetComponent<NavMeshModifier>();
+            if (modifier == null)
+            {
+                modifier = children[i].gameObject.AddComponent<NavMeshModifier>();
+            }
+
+            modifier.ignoreFromBuild = true;
+        }
+    }
+
+    void ApplyFallbackChestMaterial(GameObject chest)
+    {
+        Renderer rend = chest.GetComponent<Renderer>();
+        if (rend == null) return;
+
+        if (runtimeChestMaterial == null)
+        {
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) lit = Shader.Find("Standard");
+            runtimeChestMaterial = new Material(lit);
+            runtimeChestMaterial.color = new Color(0.78f, 0.52f, 0.16f);
+        }
+
+        rend.sharedMaterial = runtimeChestMaterial;
+    }
+
+    void AlignVisualToFloor(GameObject target, Vector3 floorXZ, float floorY)
+    {
+        Bounds bounds;
+        if (!TryGetRendererBounds(target, out bounds)) return;
+
+        Vector3 correction = new Vector3(
+            floorXZ.x - bounds.center.x,
+            floorY - bounds.min.y,
+            floorXZ.z - bounds.center.z
+        );
+        target.transform.position += correction;
     }
 
     void CreateLightOnly(Vector3 pos)
@@ -539,8 +813,41 @@ public class DungeonBuilder : MonoBehaviour
         Collider[] colliders = obj.GetComponentsInChildren<Collider>(true);
         for (int i = 0; i < colliders.Length; i++)
         {
-            Destroy(colliders[i]);
+            DestroyDungeonObject(colliders[i]);
         }
+    }
+
+    void DestroyDungeonObject(Object target)
+    {
+        if (Application.isPlaying)
+        {
+            Destroy(target);
+        }
+        else
+        {
+            DestroyImmediate(target);
+        }
+    }
+
+    void EnsureTorchFlicker(GameObject torch)
+    {
+        if (torch == null) return;
+
+        Light[] lights = torch.GetComponentsInChildren<Light>(true);
+        if (lights.Length == 0) return;
+
+        for (int i = 0; i < lights.Length; i++)
+        {
+            lights[i].shadows = LightShadows.None;
+        }
+
+        DungeonTorch flicker = torch.GetComponent<DungeonTorch>();
+        if (flicker == null)
+        {
+            flicker = torch.AddComponent<DungeonTorch>();
+        }
+
+        flicker.torchLight = lights[0];
     }
 
     void RebuildNavMesh()

@@ -18,37 +18,37 @@ public class PerkSystem : MonoBehaviour
             new PerkData
             {
                 Name = "Thick Skin",
-                Description = "+20 Max HP",
+                Description = "Vitality synergy: deeper life pool",
                 Apply = (stats) => { stats.maxHealthBonus += 20; }
             },
             new PerkData
             {
                 Name = "Quick Hands",
-                Description = "+25% Fire Rate",
+                Description = "Momentum synergy: quicker shots",
                 Apply = (stats) => { stats.fireRateMultiplier += 0.25f; }
             },
             new PerkData
             {
                 Name = "Power Shot",
-                Description = "+30% Damage",
+                Description = "Flame synergy: stronger hits",
                 Apply = (stats) => { stats.damageMultiplier += 0.3f; }
             },
             new PerkData
             {
                 Name = "Swift Feet",
-                Description = "+15% Move Speed",
+                Description = "Momentum synergy: faster footwork",
                 Apply = (stats) => { stats.speedMultiplier += 0.15f; }
             },
             new PerkData
             {
                 Name = "Scavenger",
-                Description = "+25% Loot Chance",
+                Description = "Gold synergy: richer drops",
                 Apply = (stats) => { stats.lootChanceBonus += 0.25f; }
             },
             new PerkData
             {
                 Name = "Regeneration",
-                Description = "+10 HP per level",
+                Description = "Vitality synergy: level recovery",
                 Apply = (stats) => { stats.regenPerLevel += 10; }
             }
         };

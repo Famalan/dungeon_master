@@ -10,15 +10,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.78
+      value: 1.08
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.78
+      value: 1.08
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.78
+      value: 1.08
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
       propertyPath: m_LocalPosition.x
@@ -60,10 +60,6 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: -4871733318207474793, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 2100000, guid: fc825080f419e42eb950e9189bde558e, type: 2}
     - target: {fileID: 919132149155446097, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
       propertyPath: m_Name
       value: Tank
@@ -72,10 +68,6 @@ PrefabInstance:
       propertyPath: m_TagString
       value: Enemy
       objectReference: {fileID: 0}
-    - target: {fileID: 2321523695958950486, guid: b0c12b888c4f14e4cb084f26881217ee, type: 3}
-      propertyPath: 'm_Materials.Array.data[0]'
-      value: 
-      objectReference: {fileID: 2100000, guid: fc825080f419e42eb950e9189bde558e, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -136,7 +128,7 @@ NavMeshAgent:
   m_GameObject: {fileID: 3299562618563159053}
   m_Enabled: 1
   m_AgentTypeID: 0
-  m_Radius: 0.5
+  m_Radius: 0.68
   m_Speed: 2
   m_Acceleration: 8
   avoidancePriority: 50
@@ -145,7 +137,7 @@ NavMeshAgent:
   m_AutoTraverseOffMeshLink: 1
   m_AutoBraking: 1
   m_AutoRepath: 1
-  m_Height: 2
+  m_Height: 1.75
   m_BaseOffset: 0
   m_WalkableMask: 4294967295
   m_ObstacleAvoidanceType: 4
@@ -195,6 +187,7 @@ MonoBehaviour:
   onDamageTaken:
     m_PersistentCalls:
       m_Calls: []
+  playDamageSFX: 1
 --- !u!114 &862965442529183049
 MonoBehaviour:
   m_ObjectHideFlags: 0

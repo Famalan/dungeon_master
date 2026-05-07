@@ -4,14 +4,14 @@ using System.Collections.Generic;
 public class DungeonGenerator : MonoBehaviour
 {
     [Header("Grid Settings")]
-    public int gridWidth = 80;
-    public int gridHeight = 80;
+    public int gridWidth = 72;
+    public int gridHeight = 72;
 
     [Header("Room Settings")]
-    public int maxRooms = 14;
-    public int roomMinSize = 4;
-    public int roomMaxSize = 7;
-    public int roomPadding = 2;
+    public int maxRooms = 10;
+    public int roomMinSize = 6;
+    public int roomMaxSize = 10;
+    public int roomPadding = 3;
 
     [Header("Generation")]
     public int maxPlacementAttempts = 100;
@@ -145,11 +145,14 @@ public class DungeonGenerator : MonoBehaviour
     void ComputeDistances()
     {
         Vector2Int startCenter = Vector2Int.zero;
+        int startIndex = 0;
         for (int i = 0; i < Rooms.Count; i++)
         {
+            Rooms[i].GraphStepsFromStart = int.MaxValue;
             if (Rooms[i].Type == RoomType.Start)
             {
                 startCenter = Rooms[i].Center;
+                startIndex = i;
                 break;
             }
         }
@@ -159,20 +162,112 @@ public class DungeonGenerator : MonoBehaviour
             Rooms[i].DistanceFromStart = Mathf.Abs(Rooms[i].Center.x - startCenter.x) +
                                           Mathf.Abs(Rooms[i].Center.y - startCenter.y);
         }
+
+        Queue<int> queue = new Queue<int>();
+        Rooms[startIndex].GraphStepsFromStart = 0;
+        queue.Enqueue(startIndex);
+
+        while (queue.Count > 0)
+        {
+            int roomIndex = queue.Dequeue();
+            int nextStep = Rooms[roomIndex].GraphStepsFromStart + 1;
+            List<int> connected = Rooms[roomIndex].ConnectedRoomIndexes;
+            for (int i = 0; i < connected.Count; i++)
+            {
+                int neighborIndex = connected[i];
+                if (neighborIndex < 0 || neighborIndex >= Rooms.Count) continue;
+                if (Rooms[neighborIndex].GraphStepsFromStart <= nextStep) continue;
+
+                Rooms[neighborIndex].GraphStepsFromStart = nextStep;
+                queue.Enqueue(neighborIndex);
+            }
+        }
     }
 
     void CreateCorridors()
     {
-        for (int i = 0; i < Rooms.Count - 1; i++)
+        if (Rooms == null || Rooms.Count < 2) return;
+
+        ResetRoomConnections();
+
+        int startIndex = GetStartRoomIndex();
+        List<int> connected = new List<int> { startIndex };
+        List<int> remaining = new List<int>();
+        for (int i = 0; i < Rooms.Count; i++)
         {
-            Vector2Int start = Rooms[i].Center;
-            Vector2Int end = Rooms[i + 1].Center;
+            if (i != startIndex)
+            {
+                remaining.Add(i);
+            }
+        }
 
-            Rooms[i].ConnectedRoomIndexes.Add(i + 1);
-            Rooms[i + 1].ConnectedRoomIndexes.Add(i);
+        while (remaining.Count > 0)
+        {
+            int bestConnected = connected[0];
+            int bestRemaining = remaining[0];
+            int bestDistance = int.MaxValue;
 
-            CorridorData corridor = new CorridorData();
+            for (int c = 0; c < connected.Count; c++)
+            {
+                for (int r = 0; r < remaining.Count; r++)
+                {
+                    int distance = Manhattan(Rooms[connected[c]].Center, Rooms[remaining[r]].Center);
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        bestConnected = connected[c];
+                        bestRemaining = remaining[r];
+                    }
+                }
+            }
 
+            CreateCorridorBetween(bestConnected, bestRemaining);
+            connected.Add(bestRemaining);
+            remaining.Remove(bestRemaining);
+        }
+    }
+
+    void ResetRoomConnections()
+    {
+        for (int i = 0; i < Rooms.Count; i++)
+        {
+            Rooms[i].ConnectedRoomIndexes.Clear();
+        }
+
+        Corridors.Clear();
+    }
+
+    int GetStartRoomIndex()
+    {
+        for (int i = 0; i < Rooms.Count; i++)
+        {
+            if (Rooms[i].Type == RoomType.Start)
+            {
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    int Manhattan(Vector2Int a, Vector2Int b)
+    {
+        return Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y);
+    }
+
+    void CreateCorridorBetween(int fromIndex, int toIndex)
+    {
+        Vector2Int start = Rooms[fromIndex].Center;
+        Vector2Int end = Rooms[toIndex].Center;
+
+        Rooms[fromIndex].ConnectedRoomIndexes.Add(toIndex);
+        Rooms[toIndex].ConnectedRoomIndexes.Add(fromIndex);
+
+        CorridorData corridor = new CorridorData();
+        bool horizontalFirst = Random.value > 0.5f;
+
+        if (horizontalFirst)
+        {
             int x = start.x;
             int dirX = (end.x > start.x) ? 1 : -1;
             while (x != end.x)
@@ -189,9 +284,28 @@ public class DungeonGenerator : MonoBehaviour
                 y += dirY;
             }
             corridor.Cells.Add(new Vector2Int(end.x, end.y));
-
-            Corridors.Add(corridor);
         }
+        else
+        {
+            int y = start.y;
+            int dirY = (end.y > start.y) ? 1 : -1;
+            while (y != end.y)
+            {
+                corridor.Cells.Add(new Vector2Int(start.x, y));
+                y += dirY;
+            }
+
+            int x = start.x;
+            int dirX = (end.x > start.x) ? 1 : -1;
+            while (x != end.x)
+            {
+                corridor.Cells.Add(new Vector2Int(x, end.y));
+                x += dirX;
+            }
+            corridor.Cells.Add(new Vector2Int(end.x, end.y));
+        }
+
+        Corridors.Add(corridor);
     }
 
     void BakeFloorMap()
